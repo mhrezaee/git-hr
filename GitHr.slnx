@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GitHr.App/GitHr.App.csproj" />
+    <Project Path="src/GitHr.Core/GitHr.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GitHr.Core.Tests/GitHr.Core.Tests.csproj" />
+  </Folder>
+</Solution>

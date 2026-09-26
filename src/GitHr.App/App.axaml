@@ -1,0 +1,105 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GitHr.App.App"
+             xmlns:local="using:GitHr.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <SolidColorBrush x:Key="AppBackground" Color="#1E2129" />
+        <SolidColorBrush x:Key="PanelBackground" Color="#252A33" />
+        <SolidColorBrush x:Key="ToolbarBackground" Color="#2B303B" />
+        <SolidColorBrush x:Key="SubtleBorder" Color="#363C49" />
+        <SolidColorBrush x:Key="MutedText" Color="#8B93A3" />
+        <SolidColorBrush x:Key="Accent" Color="#16A9E0" />
+        <SolidColorBrush x:Key="DiffAddedBackground" Color="#1F3A2B" />
+        <SolidColorBrush x:Key="DiffRemovedBackground" Color="#45252A" />
+        <SolidColorBrush x:Key="DiffHunkBackground" Color="#23324A" />
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace</FontFamily>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{StaticResource AppBackground}" />
+        </Style>
+
+        <!-- Section headers like "LOCAL", "STAGED" -->
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+            <Setter Property="Margin" Value="12,10,8,4" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+        </Style>
+
+        <!-- Flat toolbar buttons with icon on top -->
+        <Style Selector="Button.tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="MinWidth" Value="56" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button.small">
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <!-- Compact list rows -->
+        <Style Selector="ListBox.compact">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.compact ListBoxItem">
+            <Setter Property="Padding" Value="12,3" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+
+        <!-- Commit graph rows must touch each other so lanes connect -->
+        <Style Selector="ListBox.commits ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="28" />
+        </Style>
+
+        <!-- Diff lines -->
+        <Style Selector="ListBox.diff ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Border.diffline">
+            <Setter Property="Padding" Value="8,0" />
+        </Style>
+        <Style Selector="Border.diffline.added">
+            <Setter Property="Background" Value="{StaticResource DiffAddedBackground}" />
+        </Style>
+        <Style Selector="Border.diffline.removed">
+            <Setter Property="Background" Value="{StaticResource DiffRemovedBackground}" />
+        </Style>
+        <Style Selector="Border.diffline.hunk">
+            <Setter Property="Background" Value="{StaticResource DiffHunkBackground}" />
+        </Style>
+        <Style Selector="Border.diffline.header TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+        </Style>
+
+        <Style Selector="GridSplitter">
+            <Setter Property="Background" Value="{StaticResource SubtleBorder}" />
+        </Style>
+    </Application.Styles>
+</Application>
