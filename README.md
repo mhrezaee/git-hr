@@ -1,32 +1,46 @@
 # GitHr
 
-A fast, free, cross-platform Git GUI (in the spirit of GitKraken and Fork), built with C#, .NET 10 and [Avalonia UI](https://avaloniaui.net/).
+A fast, free, cross-platform Git GUI built with C#, .NET 10 and [Avalonia UI](https://avaloniaui.net/).
 Windows first; macOS and Linux run from the same code.
 
-## Features (so far)
+## Features
 
-- Commit graph with colored lanes, merge nodes, branch and tag badges
-- Local and remote branches with ahead/behind info; double-click to check out (remote → local tracking branch)
-- Staging: stage and unstage files, **single hunks or selected lines** (Ctrl/Shift+click lines in the diff); commit (Ctrl+Enter)
-- Discard changes: per hunk, selected lines, per file, or everything (with confirmation)
-- Diff viewer with line numbers for working-copy files and for files in any commit
-- Branch context menu: checkout, merge into current, rebase onto, create from, rename, delete (local or on the remote)
-- Commit context menu: checkout (detached), create branch/tag here, cherry-pick, revert, reset (soft/mixed/hard), copy SHA
-- Merge/rebase/cherry-pick/revert conflicts: banner with Continue / Abort, conflicted files marked, merge message pre-filled
-- Fetch (all remotes, prune), pull, and push (first push publishes the branch and sets its upstream)
-- Stash / pop stash, create branches
-- **Command palette (Ctrl+P / Ctrl+Shift+P)**: fuzzy search over all commands (pull, push, fetch, commit, stage, stash…), check out any branch, open recent repositories, or type a new name to create a branch
-- Refreshes automatically when the window regains focus; recent repositories on the start screen
+### History
+- Commit graph with colored lanes, merge nodes, and branch and tag badges
+- Commit details: full message, author, date, SHA and changed files, with a diff per file
+- Right-click a commit to check it out (detached), create a branch or tag there, cherry-pick, revert, reset the current branch (soft / mixed / hard), or copy its SHA or subject
+
+### Branches
+- Local and remote branches with ahead/behind counts; double-click to check out (a remote branch becomes a local tracking branch)
+- Right-click a branch to merge it into the current branch, rebase onto it, create a branch from it, rename it, or delete it (locally or on the remote)
+
+### Changes
+- Stage and unstage whole files, **single hunks, or selected lines** (Ctrl/Shift+click lines in the diff)
+- Discard changes per hunk, per selected line, per file, or all at once; destructive actions always ask first
+- Diff viewer with old/new line numbers
+- Commit with Ctrl+Enter; stash and pop stash
+
+### Remotes
+- Fetch (all remotes, prune deleted branches), pull and push; the first push of a new branch publishes it and sets its upstream
+
+### Conflicts
+- When a merge, rebase, cherry-pick or revert stops on conflicts, a banner offers **Continue** and **Abort**
+- Conflicted files are marked `!` and the merge message is pre-filled
+
+### Productivity
+- **Command palette** (`Ctrl+P` / `Ctrl+Shift+P`): fuzzy search over all commands, check out any branch, open recent repositories, or type a new name to create a branch
+- Refreshes automatically when the window regains focus
+- Recent repositories on the start screen
 
 ## Public and private repositories
 
-GitHr has no accounts, no paywall and no repo limits. All operations run the **installed `git` CLI**, so authentication works exactly like in your terminal:
+GitHr has no accounts, no paywall and no repository limits. All operations run the **installed `git` CLI**, so authentication works exactly like in your terminal:
 
-- **HTTPS** (GitHub, Azure DevOps, GitLab, Bitbucket…): handled by [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager), which ships with Git for Windows. A login window appears the first time, and the credentials are then stored in the OS credential store.
-- **SSH**: uses your SSH keys and `ssh-agent` (e.g. the Windows OpenSSH agent service, or Pageant).
+- **HTTPS** (GitHub, Azure DevOps, GitLab, Bitbucket…): handled by [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager), which ships with Git for Windows. A login window appears the first time; the credentials are then stored in the OS credential store.
+- **SSH**: uses your SSH keys and `ssh-agent` (for example the Windows OpenSSH agent service, or Pageant).
 - Hooks, LFS, `includeIf` configs and signing settings from your git config are all respected.
 
-GitHr runs git with `GIT_TERMINAL_PROMPT=0`, so it never hangs waiting for terminal input.
+GitHr runs git with `GIT_TERMINAL_PROMPT=0` and `GIT_EDITOR=true`, so it never hangs waiting for terminal input or an editor.
 
 ## Requirements
 
@@ -38,26 +52,43 @@ GitHr runs git with `GIT_TERMINAL_PROMPT=0`, so it never hangs waiting for termi
 ```sh
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
-dotnet run --project src/GitHr.App -- C:\path\repo # open a repo directly
+dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
 dotnet test
 ```
 
-Shortcuts: `Ctrl+P` command palette, `Ctrl+O` open, `F5` refresh, `Ctrl+Enter` commit.
+## Keyboard shortcuts
 
-## Structure
+| Shortcut | Action |
+|---|---|
+| `Ctrl+P` / `Ctrl+Shift+P` | Command palette |
+| `Ctrl+O` | Open repository |
+| `F5` | Refresh |
+| `Ctrl+Enter` | Commit (in the commit message box) |
+| `Ctrl/Shift+click` | Select several lines in the diff |
+
+On macOS, `Cmd+P` also opens the command palette.
+
+## Project structure
 
 | Project | Purpose |
 |---|---|
-| `src/GitHr.Core` | UI-independent Git layer: `GitRunner` (CLI process), `GitRepository` (operations), `Parsing/GitOutputParser` (porcelain parsing), `Graph/CommitGraph` (lane layout) |
-| `src/GitHr.App` | Avalonia desktop app (MVVM with CommunityToolkit.Mvvm); `Controls/CommitGraphCell` draws the graph |
-| `tests/GitHr.Core.Tests` | xUnit tests: parsers, graph layout, and end-to-end tests against real temporary repositories |
-| `tests/GitHr.App.Tests` | Headless UI tests (Avalonia.Headless): drive the real window with keyboard input, e.g. the command palette |
+| `src/GitHr.Core` | UI-independent Git layer: `GitRunner` (runs the git CLI), `GitRepository` (operations), `Parsing/GitOutputParser` (porcelain parsing), `Graph/CommitGraph` (lane layout), `PatchBuilder` (partial hunk/line patches for `git apply`) |
+| `src/GitHr.App` | Avalonia desktop app (MVVM with CommunityToolkit.Mvvm): `Views` (main window, dialogs), `ViewModels`, `Controls/CommitGraphCell` (draws the graph) |
+| `tests/GitHr.Core.Tests` | xUnit tests: parsers, graph layout, patch building, and end-to-end tests against real temporary repositories |
+| `tests/GitHr.App.Tests` | Headless UI tests (Avalonia.Headless): drive the real window with keyboard and mouse input, off-screen |
 
 ## Roadmap
 
-- Stash list, tags, delete/rename branches, merge and rebase from the UI
-- Interactive rebase, conflict resolution
-- Clone dialog; GitHub/Azure DevOps integration (PRs)
+- Clone dialog and live progress output for fetch/pull/push/clone
+- Merge conflict resolver (ours / theirs / result)
+- Interactive rebase (reorder, squash, reword, drop)
+- Side-by-side diff with syntax highlighting
+- Stash list and tags in the sidebar
 - Search and filtering in history, file history, blame
+- GitHub / Azure DevOps pull requests
 - Multiple repository tabs, settings, light theme
-- Packaging: MSIX/installer (Windows), .app/.dmg (macOS), AppImage/Flatpak (Linux)
+- Packaging: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
+
+## License
+
+[MIT](LICENSE)

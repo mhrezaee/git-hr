@@ -82,7 +82,7 @@ public sealed class CommitGraphCell : Control
         context.DrawEllipse(brush, null, center, NodeRadius, NodeRadius);
         if (row.IsMerge)
         {
-            // Merge commits: hollow node, like GitKraken.
+            // Merge commits: hollow node.
             context.DrawEllipse(NodeCenter, null, center, NodeRadius - 2.5, NodeRadius - 2.5);
         }
     }

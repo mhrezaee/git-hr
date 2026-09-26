@@ -173,7 +173,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanRunGit))]
     public Task RefreshAsync() => RunGitAsync("Refreshing…", _ => Task.CompletedTask);
 
-    /// <summary>Called when the window regains focus, so changes made outside the app show up (like Fork).</summary>
+    /// <summary>Called when the window regains focus, so changes made outside the app show up.</summary>
     public async Task RefreshIfIdleAsync()
     {
         if (CanRunGit)

@@ -18,7 +18,7 @@ public sealed record GraphRow(int NodeLane, int LaneCount, IReadOnlyList<GraphSe
 
 /// <summary>
 /// Assigns commits (newest first, as <c>git log --date-order</c> returns them) to vertical lanes
-/// and computes the connecting lines, like the graph in GitKraken / Fork.
+/// and computes the connecting lines between them.
 /// </summary>
 public static class CommitGraph
 {

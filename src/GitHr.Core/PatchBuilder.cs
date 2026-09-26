@@ -5,7 +5,7 @@ namespace GitHr.Core;
 
 /// <summary>
 /// Builds a patch containing only some hunks or lines of a single-file diff, for partial
-/// staging, unstaging and discarding with <c>git apply</c> (same approach as git-gui / Fork).
+/// staging, unstaging and discarding with <c>git apply</c> (same approach as git-gui).
 /// </summary>
 public static class PatchBuilder
 {
