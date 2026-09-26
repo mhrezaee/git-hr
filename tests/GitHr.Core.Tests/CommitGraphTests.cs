@@ -15,7 +15,7 @@ public class CommitGraphTests
         Assert.All(rows, r => Assert.Equal(0, r.NodeLane));
         Assert.All(rows, r => Assert.Equal(1, r.LaneCount));
         Assert.Contains(new GraphSegment(0, 0, GraphHalf.Top, 0), rows[1].Segments);
-        Assert.Empty(rows[2].Segments.Where(s => s.Half == GraphHalf.Bottom));
+        Assert.DoesNotContain(rows[2].Segments, s => s.Half == GraphHalf.Bottom);
     }
 
     [Fact]

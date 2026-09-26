@@ -29,8 +29,14 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel(AppSettings settings)
     {
         _settings = settings;
+        Palette = new CommandPaletteViewModel(GetPaletteItems);
         LoadRecent();
     }
+
+    public CommandPaletteViewModel Palette { get; }
+
+    /// <summary>Set by the window: shows the folder picker and opens the chosen repository.</summary>
+    public Func<Task>? PickRepository { get; set; }
 
     public ObservableCollection<CommitItemViewModel> Commits { get; } = [];
     public ObservableCollection<BranchItemViewModel> LocalBranches { get; } = [];
@@ -44,7 +50,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRepository))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand))]
     public partial string? RepositoryName { get; set; }
 
     public bool HasRepository => RepositoryName is not null;
@@ -60,7 +66,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -187,6 +193,92 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task CheckoutAsync(BranchItemViewModel branch) =>
         branch.IsCurrent ? Task.CompletedTask : RunGitAsync($"Checking out {branch.Name}…", r => r.CheckoutAsync(branch.Branch));
+
+    [RelayCommand]
+    private Task CreateBranchAsync(string name) =>
+        RunGitAsync($"Creating branch {name}…", r => r.CreateBranchAsync(name));
+
+    [RelayCommand(CanExecute = nameof(CanRunGit))]
+    private Task StashAsync() => RunGitAsync("Stashing…", r => r.StashAsync());
+
+    [RelayCommand(CanExecute = nameof(CanRunGit))]
+    private Task StashPopAsync() => RunGitAsync("Applying stash…", r => r.StashPopAsync());
+
+    // ---------- Command palette (Ctrl+P) ----------
+
+    public void OpenPalette() => Palette.Open();
+
+    private IEnumerable<PaletteItem> GetPaletteItems(string query)
+    {
+        if (HasRepository)
+        {
+            foreach (var item in RepositoryCommands())
+            {
+                yield return item;
+            }
+
+            var branchName = ToBranchName(query);
+            if (branchName is not null && CanRunGit && LocalBranches.All(b => b.Name != branchName))
+            {
+                yield return new PaletteItem($"Create branch “{branchName}”", "Branch",
+                    () => CreateBranchCommand.ExecuteAsync(branchName), Detail: "from the current commit and check it out", IsFallback: true);
+            }
+
+            foreach (var branch in LocalBranches.Where(b => !b.IsCurrent))
+            {
+                yield return new PaletteItem($"Checkout {branch.Name}", "Branch", () => CheckoutCommand.ExecuteAsync(branch), Detail: branch.Tracking);
+            }
+            foreach (var branch in RemoteBranches)
+            {
+                yield return new PaletteItem($"Checkout {branch.Name}", "Remote branch", () => CheckoutCommand.ExecuteAsync(branch),
+                    Detail: "creates a local tracking branch");
+            }
+        }
+
+        if (PickRepository is { } pick)
+        {
+            yield return new PaletteItem("Open repository…", "Repository", pick, "Ctrl+O");
+        }
+        foreach (var recent in RecentRepositories.Where(r => !string.Equals(r.Path, RepositoryPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            yield return new PaletteItem($"Open {recent.Name}", "Recent", () => OpenRepositoryAsync(recent.Path), Detail: recent.Path);
+        }
+        if (HasRepository)
+        {
+            yield return new PaletteItem("Close repository", "Repository", () => { CloseRepository(); return Task.CompletedTask; });
+        }
+    }
+
+    private IEnumerable<PaletteItem> RepositoryCommands()
+    {
+        (string Title, string Category, IAsyncRelayCommand Command, string? Shortcut)[] commands =
+        [
+            ("Pull", "Remote", PullCommand, null),
+            ("Push", "Remote", PushCommand, null),
+            ("Fetch", "Remote", FetchCommand, null),
+            ("Commit staged changes", "Changes", CommitCommand, "Ctrl+Enter"),
+            ("Stage all changes", "Changes", StageAllCommand, null),
+            ("Unstage all changes", "Changes", UnstageAllCommand, null),
+            ("Stash all changes", "Stash", StashCommand, null),
+            ("Pop latest stash", "Stash", StashPopCommand, null),
+            ("Refresh", "Repository", RefreshCommand, "F5"),
+        ];
+        return commands
+            .Where(c => c.Command.CanExecute(null))
+            .Select(c => new PaletteItem(c.Title, c.Category, () => c.Command.ExecuteAsync(null), c.Shortcut));
+    }
+
+    /// <summary>Turns palette input into a branch name ("my feature" → "my-feature"), or null if it cannot be one.</summary>
+    private static string? ToBranchName(string query)
+    {
+        var name = string.Join('-', query.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (name.Length == 0 || name.StartsWith('-') || name.StartsWith('/') || name.EndsWith('/') || name.EndsWith(".lock") ||
+            name.Contains("..") || name.Any(c => c is '~' or '^' or ':' or '?' or '*' or '[' or '\\' || char.IsControl(c)))
+        {
+            return null;
+        }
+        return name;
+    }
 
     // ---------- Staging & committing ----------
 

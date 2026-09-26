@@ -1,8 +1,11 @@
 using System;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using GitHr.App.ViewModels;
 
 namespace GitHr.App.Views;
@@ -19,9 +22,67 @@ public partial class MainWindow : Window
                 await vm.RefreshIfIdleAsync();
             }
         };
+        // Tunnel so the shortcut works even while a text box or list has focus.
+        AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext!;
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (DataContext is MainViewModel vm)
+        {
+            vm.PickRepository = PickRepositoryAsync;
+        }
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Ctrl+P or Ctrl+Shift+P (Cmd on macOS) opens the command palette.
+        if (e.Key == Key.P && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta)))
+        {
+            e.Handled = true;
+            ViewModel.OpenPalette();
+            Dispatcher.UIThread.Post(() => PaletteBox.Focus(), DispatcherPriority.Input);
+        }
+        else if (e.Key == Key.Escape && ViewModel.Palette.IsOpen)
+        {
+            e.Handled = true;
+            ViewModel.Palette.Close();
+        }
+    }
+
+    private async void PaletteBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        var palette = ViewModel.Palette;
+        switch (e.Key)
+        {
+            case Key.Down:
+            case Key.Up:
+                e.Handled = true;
+                palette.MoveSelection(e.Key == Key.Down ? 1 : -1);
+                if (palette.SelectedItem is { } selected)
+                {
+                    PaletteList.ScrollIntoView(selected);
+                }
+                break;
+            case Key.Enter:
+                e.Handled = true;
+                await palette.ExecuteAsync();
+                break;
+        }
+    }
+
+    private async void PaletteList_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Source is Visual source && source.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is PaletteItem item)
+        {
+            await ViewModel.Palette.ExecuteAsync(item);
+        }
+    }
+
+    private void PaletteBackdrop_PointerPressed(object? sender, PointerPressedEventArgs e) => ViewModel.Palette.Close();
 
     protected override async void OnKeyDown(KeyEventArgs e)
     {

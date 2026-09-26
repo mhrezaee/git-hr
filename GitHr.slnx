@@ -4,6 +4,7 @@
     <Project Path="src/GitHr.Core/GitHr.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/GitHr.App.Tests/GitHr.App.Tests.csproj" />
     <Project Path="tests/GitHr.Core.Tests/GitHr.Core.Tests.csproj" />
   </Folder>
 </Solution>

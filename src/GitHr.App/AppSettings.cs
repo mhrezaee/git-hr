@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GitHr.App;
 
@@ -11,25 +12,31 @@ public sealed class AppSettings
 {
     private const int MaxRecent = 15;
 
-    private static readonly string FilePath = Path.Combine(
+    public static readonly string DefaultFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GitHr", "settings.json");
+
+    [JsonIgnore]
+    public string FilePath { get; private set; } = DefaultFilePath;
 
     public List<string> RecentRepositories { get; set; } = [];
 
-    public static AppSettings Load()
+    public static AppSettings Load(string? filePath = null)
     {
+        filePath ??= DefaultFilePath;
+        var settings = new AppSettings();
         try
         {
-            if (File.Exists(FilePath))
+            if (File.Exists(filePath))
             {
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(filePath)) ?? settings;
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
             // Corrupt or unreadable settings: start fresh.
         }
-        return new AppSettings();
+        settings.FilePath = filePath;
+        return settings;
     }
 
     public void AddRecent(string path)

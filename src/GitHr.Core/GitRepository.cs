@@ -185,6 +185,13 @@ public sealed class GitRepository
         ? RunAsync(["switch", "-c", name], cancellationToken)
         : RunAsync(["branch", name], cancellationToken);
 
+    /// <summary>Stashes all local changes, including untracked files.</summary>
+    public Task StashAsync(string? message = null, CancellationToken cancellationToken = default) =>
+        RunAsync(message is null ? ["stash", "push", "-u"] : ["stash", "push", "-u", "-m", message], cancellationToken);
+
+    public Task StashPopAsync(CancellationToken cancellationToken = default) =>
+        RunAsync(["stash", "pop"], cancellationToken);
+
     public Task FetchAsync(CancellationToken cancellationToken = default) =>
         RunAsync(["fetch", "--all", "--prune"], cancellationToken);
 

@@ -10,6 +10,8 @@ Windows first; macOS and Linux run from the same code.
 - Staging: stage and unstage single files or all files, commit (Ctrl+Enter)
 - Diff viewer for working-copy files and for files in any commit
 - Fetch (all remotes, prune), pull, and push (first push publishes the branch and sets its upstream)
+- Stash / pop stash, create branches
+- **Command palette (Ctrl+P / Ctrl+Shift+P)**: fuzzy search over all commands (pull, push, fetch, commit, stage, stash…), check out any branch, open recent repositories, or type a new name to create a branch
 - Refreshes automatically when the window regains focus; recent repositories on the start screen
 
 ## Public and private repositories
@@ -36,7 +38,7 @@ dotnet run --project src/GitHr.App -- C:\path\repo # open a repo directly
 dotnet test
 ```
 
-Shortcuts: `Ctrl+O` open, `F5` refresh, `Ctrl+Enter` commit.
+Shortcuts: `Ctrl+P` command palette, `Ctrl+O` open, `F5` refresh, `Ctrl+Enter` commit.
 
 ## Structure
 
@@ -45,11 +47,12 @@ Shortcuts: `Ctrl+O` open, `F5` refresh, `Ctrl+Enter` commit.
 | `src/GitHr.Core` | UI-independent Git layer: `GitRunner` (CLI process), `GitRepository` (operations), `Parsing/GitOutputParser` (porcelain parsing), `Graph/CommitGraph` (lane layout) |
 | `src/GitHr.App` | Avalonia desktop app (MVVM with CommunityToolkit.Mvvm); `Controls/CommitGraphCell` draws the graph |
 | `tests/GitHr.Core.Tests` | xUnit tests: parsers, graph layout, and end-to-end tests against real temporary repositories |
+| `tests/GitHr.App.Tests` | Headless UI tests (Avalonia.Headless): drive the real window with keyboard input, e.g. the command palette |
 
 ## Roadmap
 
 - Line and hunk staging, discard changes
-- Stash, tags, create/delete/rename branches, merge and rebase from the UI
+- Stash list, tags, delete/rename branches, merge and rebase from the UI
 - Interactive rebase, conflict resolution
 - Clone dialog; GitHub/Azure DevOps integration (PRs)
 - Search and filtering in history, file history, blame

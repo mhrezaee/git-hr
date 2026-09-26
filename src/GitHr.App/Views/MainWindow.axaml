@@ -18,6 +18,7 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <Panel>
     <DockPanel>
         <!-- ================= Toolbar ================= -->
         <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBackground}"
@@ -325,4 +326,38 @@
             </Grid>
         </Panel>
     </DockPanel>
+
+    <!-- ================= Command palette (Ctrl+P) ================= -->
+    <Panel IsVisible="{Binding Palette.IsOpen}">
+        <Border Background="#80000000" PointerPressed="PaletteBackdrop_PointerPressed" />
+        <Border Width="620" MaxHeight="460" VerticalAlignment="Top" Margin="0,70,0,0"
+                Background="{StaticResource ToolbarBackground}" BorderBrush="{StaticResource SubtleBorder}"
+                BorderThickness="1" CornerRadius="8" BoxShadow="0 8 32 0 #A0000000">
+            <DockPanel>
+                <TextBox x:Name="PaletteBox" DockPanel.Dock="Top" Margin="10"
+                         Text="{Binding Palette.Query}" KeyDown="PaletteBox_KeyDown"
+                         PlaceholderText="Type a command, a branch to check out, or a new branch name…" />
+                <TextBlock DockPanel.Dock="Bottom" Classes="muted" FontSize="11" Margin="12,6,12,8"
+                           Text="↑↓ select   Enter run   Esc close" />
+                <ListBox x:Name="PaletteList" Classes="compact" ItemsSource="{Binding Palette.Items}"
+                         SelectedItem="{Binding Palette.SelectedItem}" Tapped="PaletteList_Tapped">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PaletteItem">
+                            <Grid ColumnDefinitions="110,*,Auto" Margin="0,3">
+                                <TextBlock Text="{Binding Category}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding Shortcut}" Classes="muted" FontSize="11"
+                                           FontFamily="{StaticResource MonoFont}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+    </Panel>
+    </Panel>
 </Window>

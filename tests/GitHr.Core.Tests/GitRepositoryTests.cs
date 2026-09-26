@@ -116,6 +116,24 @@ public sealed class GitRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StashAndPop_RestoresChanges()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "a\n");
+        await _repo.StageAllAsync();
+        await _repo.CommitAsync("Initial");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "changed\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "new.txt"), "new\n");
+
+        await _repo.StashAsync("wip");
+        var stashed = await _repo.GetStatusAsync();
+        Assert.Empty(stashed.Unstaged);
+
+        await _repo.StashPopAsync();
+        var restored = await _repo.GetStatusAsync();
+        Assert.Equal(["a.txt", "new.txt"], restored.Unstaged.Select(c => c.Path).Order());
+    }
+
+    [Fact]
     public async Task PushPullFetch_AgainstLocalRemote()
     {
         var remoteDir = _dir + "-remote.git";
