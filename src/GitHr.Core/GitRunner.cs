@@ -18,10 +18,15 @@ public sealed class GitRunner
 
     public string GitExecutable { get; }
 
+    /// <param name="progress">
+    /// Receives git's live progress lines from stderr ("Receiving objects:  45% (450/1000)"). Pass
+    /// <c>--progress</c> to the command, since git only prints progress to a terminal by default.
+    /// </param>
     public async Task<GitResult> RunAsync(
         string workingDirectory,
         IEnumerable<string> arguments,
         string? standardInput = null,
+        IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var args = arguments.ToList();
@@ -68,7 +73,9 @@ public sealed class GitRunner
         }
 
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var errorTask = progress is null
+            ? process.StandardError.ReadToEndAsync(cancellationToken)
+            : ReadWithProgressAsync(process.StandardError, progress, cancellationToken);
 
         if (standardInput is not null)
         {
@@ -87,6 +94,47 @@ public sealed class GitRunner
         }
 
         return new GitResult(args, process.ExitCode, await outputTask, await errorTask);
+    }
+
+    /// <summary>
+    /// Reports every stderr segment as it arrives. Git rewrites progress lines in place with '\r';
+    /// only '\n'-terminated lines are kept in the returned text, so error messages stay free of progress noise.
+    /// </summary>
+    private static async Task<string> ReadWithProgressAsync(StreamReader reader, IProgress<string> progress, CancellationToken cancellationToken)
+    {
+        var kept = new StringBuilder();
+        var line = new StringBuilder();
+        var buffer = new char[1024];
+        int read;
+        while ((read = await reader.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            for (var i = 0; i < read; i++)
+            {
+                var c = buffer[i];
+                if (c is not ('\r' or '\n'))
+                {
+                    line.Append(c);
+                    continue;
+                }
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+                var text = line.ToString();
+                line.Clear();
+                progress.Report(text);
+                if (c == '\n')
+                {
+                    kept.Append(text).Append('\n');
+                }
+            }
+        }
+        if (line.Length > 0)
+        {
+            progress.Report(line.ToString());
+            kept.Append(line);
+        }
+        return kept.ToString();
     }
 }
 

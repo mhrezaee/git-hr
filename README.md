@@ -1,9 +1,32 @@
 # GitHr
 
-A fast, free, cross-platform Git GUI built with C#, .NET 10 and [Avalonia UI](https://avaloniaui.net/).
-Windows first; macOS and Linux run from the same code.
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
+[![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
+![Tests](https://img.shields.io/badge/tests-81%20passing-2EA44F)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+A fast, free, cross-platform Git GUI built with C#, .NET 10 and Avalonia UI.
+Windows first; macOS and Linux run from the same code. No accounts, no paywall, no repository limits — public and private repositories alike.
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Design decisions](#design-decisions)
+- [Key flows](#key-flows)
+- [Testing strategy](#testing-strategy)
+- [Security and privacy](#security-and-privacy)
+- [Getting started](#getting-started)
+- [Project structure](#project-structure)
+- [Roadmap](#roadmap)
+
+---
 
 ## Features
+
+### Repositories
+- **Clone** public or private repositories (HTTPS or SSH), with the folder name derived from the URL and a copied git URL pre-filled from the clipboard
+- Open any local repository, or pass its path on the command line; recent repositories on the start screen
+- **Live progress** for clone, fetch, pull and push ("Receiving objects: 45%"), with a **Cancel** button
 
 ### History
 - Commit graph with colored lanes, merge nodes, and branch and tag badges
@@ -16,78 +39,281 @@ Windows first; macOS and Linux run from the same code.
 
 ### Changes
 - Stage and unstage whole files, **single hunks, or selected lines** (Ctrl/Shift+click lines in the diff)
-- Discard changes per hunk, per selected line, per file, or all at once; destructive actions always ask first
-- Diff viewer with old/new line numbers
-- Commit with Ctrl+Enter; stash and pop stash
+- Discard changes per hunk, per selected line, per file, or all at once
+- Commit with Ctrl+Enter, or **amend the last commit** (message pre-filled; warns if it was already pushed)
+- Diff viewer with old/new line numbers; stash and pop stash
 
 ### Remotes
 - Fetch (all remotes, prune deleted branches), pull and push; the first push of a new branch publishes it and sets its upstream
+- **Force push with lease** after amending or rebasing — refuses to overwrite commits someone else pushed
 
 ### Conflicts
 - When a merge, rebase, cherry-pick or revert stops on conflicts, a banner offers **Continue** and **Abort**
 - Conflicted files are marked `!` and the merge message is pre-filled
 
 ### Productivity
-- **Command palette** (`Ctrl+P` / `Ctrl+Shift+P`): fuzzy search over all commands, check out any branch, open recent repositories, or type a new name to create a branch
+- **Command palette** (`Ctrl+P`): fuzzy search over all commands, check out any branch, open recent repositories, or type a new name to create a branch
 - Refreshes automatically when the window regains focus
-- Recent repositories on the start screen
 
-## Public and private repositories
+---
 
-GitHr has no accounts, no paywall and no repository limits. All operations run the **installed `git` CLI**, so authentication works exactly like in your terminal:
+## Architecture
 
-- **HTTPS** (GitHub, Azure DevOps, GitLab, Bitbucket…): handled by [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager), which ships with Git for Windows. A login window appears the first time; the credentials are then stored in the OS credential store.
-- **SSH**: uses your SSH keys and `ssh-agent` (for example the Windows OpenSSH agent service, or Pageant).
-- Hooks, LFS, `includeIf` configs and signing settings from your git config are all respected.
+GitHr is split into a UI-independent **Core** and an Avalonia **App**. Core knows nothing about the UI and can be reused by a CLI, tests or another front end. Every Git operation goes through the real `git` executable.
 
-GitHr runs git with `GIT_TERMINAL_PROMPT=0` and `GIT_EDITOR=true`, so it never hangs waiting for terminal input or an editor.
+```mermaid
+flowchart TB
+    subgraph App["GitHr.App — Avalonia desktop app"]
+        direction TB
+        Views["Views<br/>MainWindow · CloneDialog · Dialogs"]
+        VMs["ViewModels (MVVM)<br/>MainViewModel · CommandPalette · CloneDialog · item VMs"]
+        Controls["Controls<br/>CommitGraphCell (custom rendering)"]
+        Views -- "compiled bindings" --> VMs
+        Views --> Controls
+    end
 
-## Requirements
+    subgraph Core["GitHr.Core — no UI dependencies"]
+        direction TB
+        Repo["GitRepository<br/>high-level operations"]
+        Runner["GitRunner<br/>process, stdin/stdout, live progress, cancel"]
+        Parser["GitOutputParser<br/>porcelain v2, log, diff, refs"]
+        Graph["CommitGraph<br/>lane layout"]
+        Patch["PatchBuilder<br/>partial hunk / line patches"]
+        Url["GitUrl"]
+        Repo --> Runner
+        Repo --> Parser
+    end
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/)
-- Git 2.30+ on the `PATH`
+    subgraph System["Installed on the machine"]
+        Git["git CLI"]
+        GCM["Git Credential Manager<br/>HTTPS sign-in"]
+        SSH["ssh / ssh-agent"]
+    end
 
-## Build, run and test
+    Remotes[("GitHub · Azure DevOps · GitLab · Bitbucket · any git server")]
+
+    VMs --> Repo
+    VMs --> Graph
+    VMs --> Patch
+    VMs --> Url
+    Runner -- "child process" --> Git
+    Git --> GCM
+    Git --> SSH
+    Git <--> Remotes
+```
+
+### Layers and responsibilities
+
+| Layer | Responsibility | Must not |
+|---|---|---|
+| **Views** (`*.axaml`, code-behind) | Layout, styling, input routing, native dialogs (folder picker, clipboard) | Contain Git logic or state |
+| **ViewModels** | UI state, commands, confirmation rules, busy/progress/cancel handling, selection | Start processes or parse Git output |
+| **Core: `GitRepository`** | One method per Git operation, typed results, error translation (`GitException`) | Know about windows, threads or dialogs |
+| **Core: `GitRunner`** | Run `git` safely: argument lists (no shell quoting), UTF-8, no terminal prompts, streamed progress, kill on cancel | Interpret results |
+| **Core: pure algorithms** | `GitOutputParser`, `CommitGraph`, `PatchBuilder`, `GitUrl` — deterministic functions over text | Perform I/O |
+
+### Threading model
+
+- The UI thread only updates view models. Git runs in child processes awaited asynchronously, so the window never freezes.
+- Commit graph layout for thousands of commits runs on the thread pool (`Task.Run`), then results are applied on the UI thread.
+- Live progress is read from git's stderr as it arrives and marshalled to the UI thread via `Progress<T>` (which captures the UI synchronization context).
+- Every long operation has a `CancellationToken`; cancelling kills the whole git process tree and, for clones, removes the half-written folder.
+
+---
+
+## Design decisions
+
+| Decision | Why | Trade-off |
+|---|---|---|
+| **Drive the `git` CLI instead of a library (libgit2)** | 100% compatible with the user's git: credential helpers, SSH agents, hooks, LFS, `includeIf`, signing. Private repositories need no extra auth code. | Process start per command (milliseconds); output must be parsed |
+| **Machine-readable output only** (`status --porcelain=v2 -z`, custom `log --format` with control-character separators, `for-each-ref` formats) | Stable across git versions and user locales; file names with spaces or Unicode are safe | Parsers are hand-written — and therefore unit-tested |
+| **`GIT_TERMINAL_PROMPT=0`, `GIT_EDITOR=true`, stdin closed** | A GUI has no terminal: git must never block waiting for input or an editor. GUI credential helpers still show their sign-in windows. | Features that need an editor (interactive rebase) get their own UI |
+| **Partial staging via generated patches + `git apply --cached`** | Exactly the same result as command-line git; works for index and working tree, forward and reverse | Patch building needs care when removed/added lines interleave — covered by dedicated tests |
+| **Avalonia UI** | One codebase for Windows, macOS and Linux; Skia rendering looks identical everywhere; a real headless mode for UI tests | Smaller ecosystem than web UI stacks |
+| **MVVM with CommunityToolkit.Mvvm source generators** | Testable view models, no reflection-heavy frameworks, compile-time checked bindings | Some boilerplate in item view models (`Owner` references for context menus) |
+| **Destructive actions always confirm; Enter never confirms them** | Discard, reset hard, force delete and force push cannot be undone | One extra click |
+| **`--force-with-lease` instead of `--force`** | Never silently overwrites commits pushed by someone else | Rejects when the remote-tracking ref is stale (fetch first) |
+
+---
+
+## Key flows
+
+### Staging selected lines
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant View as Diff view
+    participant VM as MainViewModel
+    participant PB as PatchBuilder
+    participant Repo as GitRepository
+    participant Git as git
+
+    User->>View: Ctrl/Shift+click lines, "Stage lines"
+    View->>VM: StageLinesCommand (selected line indexes)
+    VM->>PB: Build(diff, selection, reverse: false)
+    Note over PB: unselected "-" lines become context,<br/>unselected "+" lines are dropped,<br/>order kept so replacements land in place
+    PB-->>VM: patch text
+    VM->>Repo: ApplyPatchAsync(patch, cached: true)
+    Repo->>Git: git apply --cached --recount -  (patch on stdin)
+    Git-->>Repo: exit 0
+    VM->>Repo: reload status, branches, graph, operation (in parallel)
+    Repo-->>VM: new state
+    VM-->>View: diff re-rendered; file follows to "Staged" if fully staged
+```
+
+### Cloning a private repository
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Dialog as CloneDialog
+    participant VM as MainViewModel
+    participant Runner as GitRunner
+    participant Git as git clone --progress
+    participant GCM as Credential Manager
+    participant Remote as Remote server
+
+    User->>Dialog: paste URL (pre-filled from clipboard), pick folder
+    Dialog-->>VM: URL + target path (validated: folder missing or empty)
+    VM->>Runner: RunAsync(clone, progress, cancellation)
+    Runner->>Git: start process (no terminal prompts)
+    Git->>Remote: request
+    Remote-->>Git: 401 authentication required
+    Git->>GCM: get credentials
+    GCM->>User: sign-in window (browser / device login)
+    GCM-->>Git: token (stored in the OS credential store)
+    loop while downloading
+        Git-->>Runner: stderr "Receiving objects: 45% ..." (\r-updated)
+        Runner-->>VM: IProgress.Report(line)
+        VM-->>User: progress bar + text, Cancel button
+    end
+    Git-->>Runner: exit 0
+    VM->>VM: open the cloned repository
+```
+
+### Merge / rebase / cherry-pick / revert with conflicts
+
+```mermaid
+stateDiagram-v2
+    [*] --> Clean
+    Clean --> InProgress: merge / rebase / cherry-pick / revert<br/>stops on conflicts
+    InProgress --> InProgress: resolve files, stage them
+    InProgress --> Clean: Continue (all conflicts staged)
+    InProgress --> Clean: Abort (back to the previous state)
+    Clean --> Clean: operation without conflicts
+    note right of InProgress
+        Detected from git's own state files
+        (MERGE_HEAD, rebase-merge, CHERRY_PICK_HEAD, REVERT_HEAD);
+        banner shown, merge message pre-filled
+    end note
+```
+
+### Commit graph layout
+
+`CommitGraph.Layout` assigns each commit (in `git log --date-order`) to a vertical lane in a single pass. Each lane remembers which commit it is heading to. A commit takes the lane that points to it (or the first free one); its first parent continues straight down the same lane, other parents open or join lanes; lanes that meet at a commit merge into it. The renderer (`CommitGraphCell`) then draws straight lines and S-curves per row — O(commits × lanes), fast enough for thousands of commits.
+
+---
+
+## Testing strategy
+
+**81 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary.
+
+```mermaid
+flowchart TB
+    UI["UI tests · 17<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs"]
+    INT["Integration tests · 30<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging)"]
+    UNIT["Unit tests · 34<br/>parsers · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
+    UI --- INT --- UNIT
+    style UI fill:#8B44AC,color:#fff
+    style INT fill:#16A9E0,color:#fff
+    style UNIT fill:#2EA44F,color:#fff
+```
+
+| Suite | Project | What it proves |
+|---|---|---|
+| Parser, graph, patch and URL unit tests | `tests/GitHr.Core.Tests` | Porcelain/log/diff parsing, lane assignment, patch generation incl. CRLF and interleaved changes, URL → folder name |
+| Git integration tests | `tests/GitHr.Core.Tests` | Every repository operation end to end: staging hunks/lines, discard, branches, merge/rebase conflicts with continue/abort, cherry-pick, revert, reset, tags, clone with progress and cancel, fetch/pull/push, force-with-lease |
+| Headless UI tests | `tests/GitHr.App.Tests` | Clicking the real buttons and context menus, command palette keyboard flow, clone dialog behavior, amend, conflict banner — plus rendered frames saved for visual inspection |
+| View-model unit tests | `tests/GitHr.App.Tests` | Palette fuzzy scoring, progress percentage parsing, clipboard URL suggestion rules |
+
+Test isolation:
+- Each test creates its own repository under the temp folder and deletes it afterwards.
+- UI tests use a temporary settings file, so they never touch the user's recent repositories.
+- Remote scenarios use local bare repositories over `file://`, which exercises git's real transport (including progress output) without network access.
+- UI tests run off-screen: input goes to the window in memory, never to the desktop.
+
+---
+
+## Security and privacy
+
+- **No telemetry, no accounts, no network calls of its own.** GitHr only talks to the remotes you configure, through git.
+- **Credentials never pass through GitHr.** HTTPS sign-in is handled by Git Credential Manager (credentials in the OS credential store); SSH uses your keys and agent.
+- **Arguments are passed as an argument list**, never through a shell, so branch names or paths cannot inject commands.
+- **Destructive operations ask first** (discard, reset hard, force delete, force push, abort), and Enter never confirms them.
+
+---
+
+## Getting started
+
+Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the `PATH`.
 
 ```sh
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test
+dotnet test                                        # all 81 tests
 ```
 
-## Keyboard shortcuts
+### Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+P` / `Ctrl+Shift+P` | Command palette |
+| `Ctrl+P` / `Ctrl+Shift+P` | Command palette (`Cmd+P` on macOS) |
 | `Ctrl+O` | Open repository |
+| `Ctrl+Shift+O` | Clone repository |
 | `F5` | Refresh |
 | `Ctrl+Enter` | Commit (in the commit message box) |
 | `Ctrl/Shift+click` | Select several lines in the diff |
 
-On macOS, `Cmd+P` also opens the command palette.
+---
 
 ## Project structure
 
-| Project | Purpose |
-|---|---|
-| `src/GitHr.Core` | UI-independent Git layer: `GitRunner` (runs the git CLI), `GitRepository` (operations), `Parsing/GitOutputParser` (porcelain parsing), `Graph/CommitGraph` (lane layout), `PatchBuilder` (partial hunk/line patches for `git apply`) |
-| `src/GitHr.App` | Avalonia desktop app (MVVM with CommunityToolkit.Mvvm): `Views` (main window, dialogs), `ViewModels`, `Controls/CommitGraphCell` (draws the graph) |
-| `tests/GitHr.Core.Tests` | xUnit tests: parsers, graph layout, patch building, and end-to-end tests against real temporary repositories |
-| `tests/GitHr.App.Tests` | Headless UI tests (Avalonia.Headless): drive the real window with keyboard and mouse input, off-screen |
+```
+GitHr/
+├── src/
+│   ├── GitHr.Core/                 # UI-independent Git layer
+│   │   ├── GitRunner.cs            # runs git: args, env, streamed progress, cancellation
+│   │   ├── GitRepository.cs        # all repository operations
+│   │   ├── Models.cs               # Commit, Branch, FileChange, DiffLine, RepositoryStatus, ...
+│   │   ├── PatchBuilder.cs         # partial hunk/line patches for git apply
+│   │   ├── GitUrl.cs               # repository name from a clone URL
+│   │   ├── Graph/CommitGraph.cs    # commit graph lane layout
+│   │   └── Parsing/GitOutputParser.cs
+│   └── GitHr.App/                  # Avalonia desktop app
+│       ├── Views/                  # MainWindow, CloneDialog, Dialogs
+│       ├── ViewModels/             # MainViewModel (+ Actions, Remote partials), palette, clone dialog, items
+│       ├── Controls/CommitGraphCell.cs
+│       ├── AppSettings.cs          # recent repositories, clone folder (per-user app data)
+│       └── Converters.cs
+└── tests/
+    ├── GitHr.Core.Tests/           # unit + integration tests against real repositories
+    └── GitHr.App.Tests/            # headless UI tests
+```
+
+---
 
 ## Roadmap
 
-- Clone dialog and live progress output for fetch/pull/push/clone
 - Merge conflict resolver (ours / theirs / result)
+- Stash list and tags in the sidebar
 - Interactive rebase (reorder, squash, reword, drop)
 - Side-by-side diff with syntax highlighting
-- Stash list and tags in the sidebar
 - Search and filtering in history, file history, blame
 - GitHub / Azure DevOps pull requests
 - Multiple repository tabs, settings, light theme
-- Packaging: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
+- CI (GitHub Actions on Windows, macOS, Linux) and packaging: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
 
 ## License
 

@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GitHr.App.ViewModels"
+        x:Class="GitHr.App.Views.CloneDialog"
+        x:DataType="vm:CloneDialogViewModel"
+        Title="Clone repository"
+        Width="560" SizeToContent="Height" CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <StackPanel Margin="20" Spacing="14">
+        <TextBlock Text="Clone repository" FontSize="16" FontWeight="SemiBold" />
+
+        <StackPanel Spacing="4">
+            <TextBlock Text="Repository URL" Classes="muted" FontSize="12" />
+            <TextBox x:Name="UrlBox" Text="{Binding Url}"
+                     PlaceholderText="https://github.com/owner/repo.git  or  git@github.com:owner/repo.git" />
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+            <TextBlock Grid.ColumnSpan="2" Text="Clone into" Classes="muted" FontSize="12" Margin="0,0,0,4" />
+            <TextBox Grid.Row="1" x:Name="ParentBox" Text="{Binding ParentFolder}" />
+            <Button Grid.Row="1" Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Click="Browse_Click" />
+        </Grid>
+
+        <StackPanel Spacing="4">
+            <TextBlock Text="Folder name" Classes="muted" FontSize="12" />
+            <TextBox x:Name="FolderBox" Text="{Binding FolderName}" />
+            <TextBlock Text="{Binding TargetPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <TextBlock Text="Private repositories work too: Git Credential Manager asks you to sign in (HTTPS), or your SSH key is used."
+                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+        <Grid ColumnDefinitions="*,Auto">
+            <TextBlock x:Name="ValidationText" Text="{Binding ValidationMessage}" Foreground="#E0A83D" FontSize="12"
+                       VerticalAlignment="Center" TextWrapping="Wrap" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Cancel" MinWidth="90" HorizontalContentAlignment="Center" IsCancel="True" Click="Cancel_Click" />
+                <Button x:Name="CloneButton" Classes="accent" Content="Clone" MinWidth="90" HorizontalContentAlignment="Center"
+                        IsDefault="True" IsEnabled="{Binding CanClone}" Click="Clone_Click" />
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</Window>

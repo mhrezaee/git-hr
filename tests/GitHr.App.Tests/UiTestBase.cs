@@ -53,6 +53,16 @@ public abstract class UiTestBase : IDisposable
             await setup();
         }
 
+        var (window, vm) = CreateWindow();
+        await vm.OpenRepositoryAsync(Dir);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(vm.HasRepository, vm.ErrorMessage);
+        return (window, vm);
+    }
+
+    /// <summary>The main window on its start screen, with dialogs answered by the test.</summary>
+    protected (MainWindow Window, MainViewModel Vm) CreateWindow()
+    {
         // Keep tests away from the user's real settings file.
         var vm = new MainViewModel(AppSettings.Load(Path.Combine(Path.GetTempPath(), "githr-apptests", Guid.NewGuid() + ".json")));
         var window = new MainWindow { DataContext = vm };
@@ -67,9 +77,7 @@ public abstract class UiTestBase : IDisposable
             Questions.Add(title);
             return Task.FromResult(PromptAnswer);
         };
-        await vm.OpenRepositoryAsync(Dir);
         Dispatcher.UIThread.RunJobs();
-        Assert.True(vm.HasRepository, vm.ErrorMessage);
         return (window, vm);
     }
 
@@ -110,8 +118,9 @@ public abstract class UiTestBase : IDisposable
     protected static T Find<T>(Visual root, Func<T, bool> predicate) where T : Visual =>
         root.GetVisualDescendants().OfType<T>().First(predicate);
 
+    /// <summary>A visible push button with this text (CheckBox/ToggleButton derive from Button, so they are skipped).</summary>
     protected static Button FindButton(Visual root, string content) =>
-        Find<Button>(root, b => b.IsEffectivelyVisible && Equals(b.Content, content));
+        Find<Button>(root, b => b is not Avalonia.Controls.Primitives.ToggleButton && b.IsEffectivelyVisible && Equals(b.Content, content));
 
     /// <summary>Right-clicks a control, then runs the context-menu item with the given header through its binding.</summary>
     protected static void RunContextMenuItem(Window window, Control target, string header)

@@ -45,6 +45,7 @@ public partial class MainWindow : Window
                     await clipboard.SetTextAsync(text);
                 }
             };
+            vm.RequestClone = async input => await new CloneDialog { DataContext = input }.ShowDialog<bool?>(this) == true;
         }
     }
 
@@ -58,8 +59,13 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            e.Handled = true;
+            ViewModel.CloneCommand.Execute(null);
+        }
         // Ctrl+P or Ctrl+Shift+P (Cmd on macOS) opens the command palette.
-        if (e.Key == Key.P && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta)))
+        else if (e.Key == Key.P && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta)))
         {
             e.Handled = true;
             ViewModel.OpenPalette();

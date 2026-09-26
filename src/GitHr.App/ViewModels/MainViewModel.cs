@@ -50,7 +50,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRepository))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand),
+        nameof(ForcePushCommand))]
     public partial string? RepositoryName { get; set; }
 
     public bool HasRepository => RepositoryName is not null;
@@ -66,7 +67,8 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand),
+        nameof(CloneCommand), nameof(ForcePushCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -120,6 +122,7 @@ public partial class MainViewModel : ViewModelBase
             RepositoryName = repository.Name;
             RepositoryPath = repository.Root;
             SelectedCommit = null;
+            IsAmend = false;
             CommitMessage = "";
             ClearDiff();
             _settings.AddRecent(repository.Root);
@@ -183,13 +186,13 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand(CanExecute = nameof(CanRunGit))]
-    private Task FetchAsync() => RunGitAsync("Fetching…", r => r.FetchAsync());
+    private Task FetchAsync() => RunGitAsync("Fetching…", (r, progress, ct) => r.FetchAsync(progress, ct), cancellable: true);
 
     [RelayCommand(CanExecute = nameof(CanRunGit))]
-    private Task PullAsync() => RunGitAsync("Pulling…", r => r.PullAsync());
+    private Task PullAsync() => RunGitAsync("Pulling…", (r, progress, ct) => r.PullAsync(progress, ct), cancellable: true);
 
     [RelayCommand(CanExecute = nameof(CanRunGit))]
-    private Task PushAsync() => RunGitAsync("Pushing…", r => r.PushAsync());
+    private Task PushAsync() => RunGitAsync("Pushing…", (r, progress, ct) => r.PushAsync(progress, cancellationToken: ct), cancellable: true);
 
     [RelayCommand]
     private Task CheckoutAsync(BranchItemViewModel branch)
@@ -261,6 +264,10 @@ public partial class MainViewModel : ViewModelBase
         {
             yield return new PaletteItem("Open repository…", "Repository", pick, "Ctrl+O");
         }
+        if (CloneCommand.CanExecute(null))
+        {
+            yield return new PaletteItem("Clone repository…", "Repository", () => CloneCommand.ExecuteAsync(null), "Ctrl+Shift+O");
+        }
         foreach (var recent in RecentRepositories.Where(r => !string.Equals(r.Path, RepositoryPath, StringComparison.OrdinalIgnoreCase)))
         {
             yield return new PaletteItem($"Open {recent.Name}", "Recent", () => OpenRepositoryAsync(recent.Path), Detail: recent.Path);
@@ -278,7 +285,9 @@ public partial class MainViewModel : ViewModelBase
             ("Pull", "Remote", PullCommand, null),
             ("Push", "Remote", PushCommand, null),
             ("Fetch", "Remote", FetchCommand, null),
+            ("Force push (with lease)…", "Remote", ForcePushCommand, null),
             ("Commit staged changes", "Changes", CommitCommand, "Ctrl+Enter"),
+            ("Amend last commit", "Changes", StartAmendCommand, null),
             ("Stage all changes", "Changes", StageAllCommand, null),
             ("Unstage all changes", "Changes", UnstageAllCommand, null),
             ("Discard all changes…", "Changes", DiscardAllCommand, null),
@@ -323,15 +332,25 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanCommit))]
     private async Task CommitAsync()
     {
-        if (StagedFiles.Count == 0)
+        var amend = IsAmend;
+        if (StagedFiles.Count == 0 && !amend)
         {
             ErrorMessage = "Nothing staged. Stage files first (double-click a file or use “Stage all”).";
             return;
         }
-        var message = CommitMessage.Trim();
-        if (await RunGitAsync("Committing…", r => r.CommitAsync(message)))
+        if (amend && _headPublished && !await ConfirmAsync("Amend pushed commit",
+                $"The last commit is already on “{_upstream}”. Amending replaces it with a new commit, " +
+                "so you'll have to force-push afterwards (Ctrl+P → “Force push”).\n\nOnly do this if nobody else has pulled it.", "Amend"))
         {
+            return;
+        }
+
+        var message = CommitMessage.Trim();
+        if (await RunGitAsync(amend ? "Amending…" : "Committing…", r => r.CommitAsync(message, amend)))
+        {
+            _prefilledAmendMessage = null;
             CommitMessage = "";
+            IsAmend = false;
         }
     }
 
@@ -465,29 +484,42 @@ public partial class MainViewModel : ViewModelBase
     // ---------- Plumbing ----------
 
     /// <summary>Runs a git operation with busy indicator and error reporting, then reloads the repository state.</summary>
-    private async Task<bool> RunGitAsync(string busyText, Func<GitRepository, Task> action)
+    private Task<bool> RunGitAsync(string busyText, Func<GitRepository, Task> action) =>
+        RunGitAsync(busyText, (repository, _, _) => action(repository), cancellable: false);
+
+    /// <summary>
+    /// Like <see cref="RunGitAsync(string, Func{GitRepository, Task})"/>, for long network operations:
+    /// git's progress is shown live and the user can cancel.
+    /// </summary>
+    private async Task<bool> RunGitAsync(string busyText, Func<GitRepository, IProgress<string>, CancellationToken, Task> action, bool cancellable)
     {
         if (_repository is not { } repository || IsBusy)
         {
             return false;
         }
 
-        IsBusy = true;
-        BusyText = busyText;
-        ErrorMessage = null;
+        var (progress, cancellation) = BeginBusy(busyText, cancellable);
         var success = true;
         try
         {
-            await action(repository);
+            await action(repository, progress, cancellation);
         }
         catch (GitException ex)
         {
             ErrorMessage = ex.Message;
             success = false;
         }
+        catch (OperationCanceledException)
+        {
+            ErrorMessage = "Cancelled.";
+            success = false;
+        }
 
         try
         {
+            BusyText = "Refreshing…";
+            ProgressPercent = null;
+            CanCancel = false;
             await ReloadAsync(repository);
         }
         catch (GitException ex)
@@ -496,8 +528,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
-            IsBusy = false;
-            BusyText = null;
+            EndBusy();
         }
         return success;
     }
@@ -507,6 +538,7 @@ public partial class MainViewModel : ViewModelBase
         var statusTask = repository.GetStatusAsync();
         var branchesTask = repository.GetBranchesAsync();
         var operationTask = repository.GetOperationAsync();
+        var hasCommitsTask = repository.HasCommitsAsync();
         var graphTask = Task.Run(async () =>
         {
             var commits = await repository.GetCommitsAsync(CommitLimit);
@@ -516,6 +548,7 @@ public partial class MainViewModel : ViewModelBase
         var status = await statusTask;
         var branches = await branchesTask;
         var operation = await operationTask;
+        var hasCommits = await hasCommitsTask;
         var mergeMessage = operation == RepositoryOperation.Merging ? await repository.GetMergeMessageAsync() : null;
         var (commits, rows) = await graphTask;
 
@@ -527,6 +560,7 @@ public partial class MainViewModel : ViewModelBase
         CurrentBranch = status.BranchName ?? "(detached HEAD)";
         SyncStatus = status.Upstream is null ? "not published" : $"↑{status.Ahead}  ↓{status.Behind}";
         UpdateOperation(operation, mergeMessage);
+        UpdateAmendState(hasCommits, status);
 
         // Keep showing the selected file; if all of it was just staged (or unstaged), follow it to the other list.
         var (selectedPath, wasStaged) = SelectedStagedFile is { } s ? (s.Path, true) : (SelectedUnstagedFile?.Path, false);

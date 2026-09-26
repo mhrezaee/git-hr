@@ -37,6 +37,64 @@ public sealed class GitRepository
         return new GitRepository(root, git);
     }
 
+    /// <summary>
+    /// Clones <paramref name="url"/> into <paramref name="targetDirectory"/> (which must be missing or empty) and opens it.
+    /// Private repositories authenticate through the user's credential helper or SSH agent, like any git command.
+    /// </summary>
+    public static async Task<GitRepository> CloneAsync(
+        string url,
+        string targetDirectory,
+        IProgress<string>? progress = null,
+        GitRunner? git = null,
+        CancellationToken cancellationToken = default)
+    {
+        git ??= new GitRunner();
+        var target = Path.GetFullPath(targetDirectory);
+        var existed = Directory.Exists(target);
+        if (existed && Directory.EnumerateFileSystemEntries(target).Any())
+        {
+            throw new GitException($"'{target}' already exists and is not empty.");
+        }
+        var parent = Path.GetDirectoryName(target) ?? throw new GitException($"'{target}' is not a valid folder.");
+        Directory.CreateDirectory(parent);
+
+        try
+        {
+            var result = await git.RunAsync(parent, ["clone", "--progress", "--", url, target], progress: progress, cancellationToken: cancellationToken);
+            result.EnsureSuccess();
+        }
+        catch (OperationCanceledException)
+        {
+            // git was killed and could not clean up its half-finished clone.
+            if (!existed)
+            {
+                TryDeleteDirectory(target);
+            }
+            throw;
+        }
+        return await OpenAsync(target, git, cancellationToken);
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path))
+            {
+                return;
+            }
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal); // git object files are read-only
+            }
+            Directory.Delete(path, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort; a locked file must not hide the cancellation.
+        }
+    }
+
     public async Task<IReadOnlyList<Commit>> GetCommitsAsync(int maxCount = 2000, CancellationToken cancellationToken = default)
     {
         List<string> args =
@@ -165,6 +223,10 @@ public sealed class GitRepository
         }
     }
 
+    /// <summary>Whether HEAD points at a commit (false in a brand-new repository).</summary>
+    public Task<bool> HasCommitsAsync(CancellationToken cancellationToken = default) => HasHeadAsync(cancellationToken);
+
+    /// <summary>With <paramref name="amend"/>, replaces the last commit with the staged changes and the new message.</summary>
     public async Task CommitAsync(string message, bool amend = false, CancellationToken cancellationToken = default)
     {
         List<string> args = ["commit", "-F", "-"];
@@ -329,18 +391,19 @@ public sealed class GitRepository
     public Task StashPopAsync(CancellationToken cancellationToken = default) =>
         RunAsync(["stash", "pop"], cancellationToken);
 
-    public Task FetchAsync(CancellationToken cancellationToken = default) =>
-        RunAsync(["fetch", "--all", "--prune"], cancellationToken);
+    public Task FetchAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
+        RunAsync(["fetch", "--all", "--prune", "--progress"], progress, cancellationToken);
 
-    public Task PullAsync(CancellationToken cancellationToken = default) =>
-        RunAsync(["pull"], cancellationToken);
+    public Task PullAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
+        RunAsync(["pull", "--progress"], progress, cancellationToken);
 
-    public async Task PushAsync(CancellationToken cancellationToken = default)
+    /// <param name="forceWithLease">Overwrite the remote branch (after amend/rebase), but only if nobody else pushed to it meanwhile.</param>
+    public async Task PushAsync(IProgress<string>? progress = null, bool forceWithLease = false, CancellationToken cancellationToken = default)
     {
         var status = await GetStatusAsync(cancellationToken);
         if (status.Upstream is not null)
         {
-            await RunAsync(["push"], cancellationToken);
+            await RunAsync(forceWithLease ? ["push", "--progress", "--force-with-lease"] : ["push", "--progress"], progress, cancellationToken);
             return;
         }
 
@@ -356,7 +419,7 @@ public sealed class GitRepository
             throw new GitException("This repository has no remote to push to.");
         }
         var remote = remotes.Contains("origin") ? "origin" : remotes[0];
-        await RunAsync(["push", "--set-upstream", remote, status.BranchName], cancellationToken);
+        await RunAsync(["push", "--progress", "--set-upstream", remote, status.BranchName], progress, cancellationToken);
     }
 
     private async Task<bool> HasHeadAsync(CancellationToken cancellationToken)
@@ -365,9 +428,12 @@ public sealed class GitRepository
         return result.Success;
     }
 
-    private async Task<GitResult> RunAsync(IEnumerable<string> args, CancellationToken cancellationToken)
+    private Task<GitResult> RunAsync(IEnumerable<string> args, CancellationToken cancellationToken) =>
+        RunAsync(args, progress: null, cancellationToken);
+
+    private async Task<GitResult> RunAsync(IEnumerable<string> args, IProgress<string>? progress, CancellationToken cancellationToken)
     {
-        var result = await _git.RunAsync(Root, args, cancellationToken: cancellationToken);
+        var result = await _git.RunAsync(Root, args, progress: progress, cancellationToken: cancellationToken);
         return result.EnsureSuccess();
     }
 }

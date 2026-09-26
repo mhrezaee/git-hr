@@ -31,6 +31,12 @@
                             <TextBlock Text="Open" FontSize="11" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <Button Classes="tool" Command="{Binding CloneCommand}" ToolTip.Tip="Clone a public or private repository (Ctrl+Shift+O)">
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="⤓" HorizontalAlignment="Center" />
+                            <TextBlock Text="Clone" FontSize="11" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                     <Border Width="1" Background="{StaticResource SubtleBorder}" Margin="4,4" />
                     <StackPanel VerticalAlignment="Center" Margin="6,0,16,0" IsVisible="{Binding HasRepository}">
                         <TextBlock Text="{Binding RepositoryName}" FontWeight="SemiBold" FontSize="14" />
@@ -75,8 +81,12 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsBusy}">
-                    <ProgressBar IsIndeterminate="True" Width="80" />
-                    <TextBlock Text="{Binding BusyText}" Classes="muted" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding BusyText}" Classes="muted" VerticalAlignment="Center"
+                               MaxWidth="420" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding BusyText}" />
+                    <ProgressBar Width="120" Minimum="0" Maximum="100" VerticalAlignment="Center"
+                                 IsIndeterminate="{Binding IsProgressIndeterminate}" Value="{Binding ProgressPercent, FallbackValue=0, TargetNullValue=0}" />
+                    <Button Classes="small" Content="Cancel" IsVisible="{Binding CanCancel}" Command="{Binding CancelCommand}"
+                            ToolTip.Tip="Stop the running git command" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -104,8 +114,10 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="GitHr" FontSize="40" FontWeight="Bold" HorizontalAlignment="Center" />
                     <TextBlock Text="A fast, free Git client for public and private repositories." Classes="muted" HorizontalAlignment="Center" />
-                    <Button Classes="accent" Content="Open repository…" Click="OpenRepository_Click"
-                            HorizontalAlignment="Center" Padding="24,8" Margin="0,20,0,0" />
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,20,0,0">
+                        <Button Classes="accent" Content="Open repository…" Click="OpenRepository_Click" Padding="24,8" />
+                        <Button Content="Clone repository…" Command="{Binding CloneCommand}" Padding="24,8" />
+                    </StackPanel>
                 </StackPanel>
                 <TextBlock Grid.Row="1" Classes="section" Text="RECENT REPOSITORIES" Margin="0,40,0,6"
                            IsVisible="{Binding RecentRepositories.Count, Converter={x:Static app:Converters.IsPositive}}" />
@@ -391,9 +403,10 @@
                                         <KeyBinding Gesture="Ctrl+Enter" Command="{Binding CommitCommand}" />
                                     </TextBox.KeyBindings>
                                 </TextBox>
+                                <CheckBox Content="Amend last commit" IsChecked="{Binding IsAmend}" IsEnabled="{Binding CanAmend}"
+                                          ToolTip.Tip="Replace the last commit with the staged changes and this message" />
                                 <Button Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                        Command="{Binding CommitCommand}"
-                                        Content="{Binding StagedFiles.Count, StringFormat='Commit {0} staged file(s)'}" />
+                                        Command="{Binding CommitCommand}" Content="{Binding CommitButtonText}" />
                             </StackPanel>
                         </Grid>
                     </TabItem>

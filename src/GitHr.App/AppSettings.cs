@@ -20,6 +20,30 @@ public sealed class AppSettings
 
     public List<string> RecentRepositories { get; set; } = [];
 
+    /// <summary>Parent folder used for the last clone; the clone dialog starts there.</summary>
+    public string? CloneFolder { get; set; }
+
+    [JsonIgnore]
+    public string EffectiveCloneFolder
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(CloneFolder) && Directory.Exists(CloneFolder))
+            {
+                return CloneFolder;
+            }
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var repos = Path.Combine(home, "source", "repos");
+            return Directory.Exists(repos) ? repos : home;
+        }
+    }
+
+    public void SetCloneFolder(string folder)
+    {
+        CloneFolder = folder;
+        Save();
+    }
+
     public static AppSettings Load(string? filePath = null)
     {
         filePath ??= DefaultFilePath;
