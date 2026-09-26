@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -34,6 +36,23 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm)
         {
             vm.PickRepository = PickRepositoryAsync;
+            vm.Confirm = (title, message, confirmText, destructive) => Dialogs.ConfirmAsync(this, title, message, confirmText, destructive);
+            vm.Prompt = (title, message, initial) => Dialogs.PromptAsync(this, title, message, initial);
+            vm.CopyText = async text =>
+            {
+                if (Clipboard is { } clipboard)
+                {
+                    await clipboard.SetTextAsync(text);
+                }
+            };
+        }
+    }
+
+    private void DiffList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox list && DataContext is MainViewModel vm)
+        {
+            vm.SetDiffSelection(list.SelectedItems?.OfType<DiffLineViewModel>() ?? []);
         }
     }
 

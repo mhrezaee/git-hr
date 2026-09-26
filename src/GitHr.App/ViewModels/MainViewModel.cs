@@ -44,13 +44,13 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<FileChangeItemViewModel> UnstagedFiles { get; } = [];
     public ObservableCollection<FileChangeItemViewModel> StagedFiles { get; } = [];
     public ObservableCollection<FileChangeItemViewModel> SelectedCommitFiles { get; } = [];
-    public ObservableCollection<DiffLine> DiffLines { get; } = [];
+    public ObservableCollection<DiffLineViewModel> DiffLines { get; } = [];
     public ObservableCollection<RecentRepositoryViewModel> RecentRepositories { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRepository))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand))]
     public partial string? RepositoryName { get; set; }
 
     public bool HasRepository => RepositoryName is not null;
@@ -66,7 +66,7 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
-        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand))]
+        nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -161,6 +161,7 @@ public partial class MainViewModel : ViewModelBase
         UnstagedFiles.Clear();
         StagedFiles.Clear();
         SelectedCommitFiles.Clear();
+        UpdateOperation(RepositoryOperation.None, null);
         ClearDiff();
     }
 
@@ -191,8 +192,24 @@ public partial class MainViewModel : ViewModelBase
     private Task PushAsync() => RunGitAsync("Pushing…", r => r.PushAsync());
 
     [RelayCommand]
-    private Task CheckoutAsync(BranchItemViewModel branch) =>
-        branch.IsCurrent ? Task.CompletedTask : RunGitAsync($"Checking out {branch.Name}…", r => r.CheckoutAsync(branch.Branch));
+    private Task CheckoutAsync(BranchItemViewModel branch)
+    {
+        if (branch.IsCurrent)
+        {
+            return Task.CompletedTask;
+        }
+        // origin/feature when a local "feature" already exists: just switch to the local one.
+        var target = branch.Branch;
+        if (target.IsRemote && LocalBranches.FirstOrDefault(b => b.Branch.Upstream == target.Name || b.Name == target.Name[(target.Name.IndexOf('/') + 1)..]) is { } local)
+        {
+            if (local.IsCurrent)
+            {
+                return Task.CompletedTask;
+            }
+            target = local.Branch;
+        }
+        return RunGitAsync($"Checking out {target.Name}…", r => r.CheckoutAsync(target));
+    }
 
     [RelayCommand]
     private Task CreateBranchAsync(string name) =>
@@ -212,6 +229,11 @@ public partial class MainViewModel : ViewModelBase
     {
         if (HasRepository)
         {
+            if (HasOperation)
+            {
+                yield return new PaletteItem($"Continue {OperationName}", "Conflict", () => ContinueOperationCommand.ExecuteAsync(null));
+                yield return new PaletteItem($"Abort {OperationName}", "Conflict", () => AbortOperationCommand.ExecuteAsync(null));
+            }
             foreach (var item in RepositoryCommands())
             {
                 yield return item;
@@ -259,6 +281,7 @@ public partial class MainViewModel : ViewModelBase
             ("Commit staged changes", "Changes", CommitCommand, "Ctrl+Enter"),
             ("Stage all changes", "Changes", StageAllCommand, null),
             ("Unstage all changes", "Changes", UnstageAllCommand, null),
+            ("Discard all changes…", "Changes", DiscardAllCommand, null),
             ("Stash all changes", "Stash", StashCommand, null),
             ("Pop latest stash", "Stash", StashPopCommand, null),
             ("Refresh", "Repository", RefreshCommand, "F5"),
@@ -332,7 +355,8 @@ public partial class MainViewModel : ViewModelBase
     {
         if (value is not null && SelectedCommit is { } commit)
         {
-            _ = LoadDiffAsync($"{value.Path} @ {commit.ShortSha}", (r, ct) => r.GetCommitDiffAsync(commit.Commit, value.Change, ct));
+            _ = LoadDiffAsync($"{value.Path} @ {commit.ShortSha}", DiffMode.ReadOnly,
+                (r, ct) => r.GetCommitDiffAsync(commit.Commit, value.Change, ct));
         }
     }
 
@@ -341,7 +365,9 @@ public partial class MainViewModel : ViewModelBase
         if (value is not null)
         {
             SelectedStagedFile = null;
-            _ = LoadDiffAsync($"{value.Path} (unstaged)", (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: false, ct));
+            // Untracked and conflicted files have no patchable diff: stage or discard them as a whole.
+            var mode = value.Kind is FileChangeKind.Untracked or FileChangeKind.Conflicted ? DiffMode.ReadOnly : DiffMode.Unstaged;
+            _ = LoadDiffAsync($"{value.Path} (unstaged)", mode, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: false, ct));
         }
     }
 
@@ -350,7 +376,7 @@ public partial class MainViewModel : ViewModelBase
         if (value is not null)
         {
             SelectedUnstagedFile = null;
-            _ = LoadDiffAsync($"{value.Path} (staged)", (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: true, ct));
+            _ = LoadDiffAsync($"{value.Path} (staged)", DiffMode.Staged, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: true, ct));
         }
     }
 
@@ -374,7 +400,7 @@ public partial class MainViewModel : ViewModelBase
             SelectedCommitMessage = message;
             foreach (var change in changes)
             {
-                SelectedCommitFiles.Add(new FileChangeItemViewModel(change));
+                SelectedCommitFiles.Add(new FileChangeItemViewModel(change, this));
             }
         }
         catch (OperationCanceledException)
@@ -386,7 +412,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadDiffAsync(string title, Func<GitRepository, CancellationToken, Task<IReadOnlyList<DiffLine>>> load)
+    private async Task LoadDiffAsync(string title, DiffMode mode, Func<GitRepository, CancellationToken, Task<IReadOnlyList<DiffLine>>> load)
     {
         if (_repository is not { } repository)
         {
@@ -401,14 +427,14 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
             DiffTitle = title;
-            DiffLines.Clear();
-            foreach (var line in lines)
-            {
-                DiffLines.Add(line);
-            }
+            _diff = lines;
+            CurrentDiffMode = lines.Any(l => l.IsHunk) ? mode : DiffMode.ReadOnly;
+            SetDiffSelection([]);
+            Replace(DiffLines, lines.Select((line, i) => new DiffLineViewModel(line, i, CurrentDiffMode, this)));
             if (lines.Count == 0)
             {
-                DiffLines.Add(new DiffLine(DiffLineKind.Header, "No text changes (binary file, mode change or empty file)."));
+                DiffLines.Add(new DiffLineViewModel(
+                    new DiffLine(DiffLineKind.Header, "No text changes (binary file, mode change or empty file)."), -1, DiffMode.ReadOnly, this));
             }
         }
         catch (OperationCanceledException)
@@ -430,6 +456,9 @@ public partial class MainViewModel : ViewModelBase
     private void ClearDiff()
     {
         DiffTitle = null;
+        _diff = [];
+        CurrentDiffMode = DiffMode.ReadOnly;
+        SetDiffSelection([]);
         DiffLines.Clear();
     }
 
@@ -477,6 +506,7 @@ public partial class MainViewModel : ViewModelBase
     {
         var statusTask = repository.GetStatusAsync();
         var branchesTask = repository.GetBranchesAsync();
+        var operationTask = repository.GetOperationAsync();
         var graphTask = Task.Run(async () =>
         {
             var commits = await repository.GetCommitsAsync(CommitLimit);
@@ -485,6 +515,8 @@ public partial class MainViewModel : ViewModelBase
 
         var status = await statusTask;
         var branches = await branchesTask;
+        var operation = await operationTask;
+        var mergeMessage = operation == RepositoryOperation.Merging ? await repository.GetMergeMessageAsync() : null;
         var (commits, rows) = await graphTask;
 
         if (!ReferenceEquals(repository, _repository))
@@ -494,27 +526,37 @@ public partial class MainViewModel : ViewModelBase
 
         CurrentBranch = status.BranchName ?? "(detached HEAD)";
         SyncStatus = status.Upstream is null ? "not published" : $"↑{status.Ahead}  ↓{status.Behind}";
+        UpdateOperation(operation, mergeMessage);
 
-        var selectedUnstaged = SelectedUnstagedFile?.Path;
-        var selectedStaged = SelectedStagedFile?.Path;
-        Replace(UnstagedFiles, status.Unstaged.Select(c => new FileChangeItemViewModel(c)));
-        Replace(StagedFiles, status.Staged.Select(c => new FileChangeItemViewModel(c)));
-        SelectedUnstagedFile = UnstagedFiles.FirstOrDefault(f => f.Path == selectedUnstaged);
-        SelectedStagedFile = SelectedUnstagedFile is null ? StagedFiles.FirstOrDefault(f => f.Path == selectedStaged) : null;
-        if (SelectedUnstagedFile is null && SelectedStagedFile is null && SelectedCommitFile is null)
+        // Keep showing the selected file; if all of it was just staged (or unstaged), follow it to the other list.
+        var (selectedPath, wasStaged) = SelectedStagedFile is { } s ? (s.Path, true) : (SelectedUnstagedFile?.Path, false);
+        Replace(UnstagedFiles, status.Unstaged.Select(c => new FileChangeItemViewModel(c, this)));
+        Replace(StagedFiles, status.Staged.Select(c => new FileChangeItemViewModel(c, this)));
+        var sameList = wasStaged ? StagedFiles : UnstagedFiles;
+        var otherList = wasStaged ? UnstagedFiles : StagedFiles;
+        var follow = sameList.FirstOrDefault(f => f.Path == selectedPath) ?? otherList.FirstOrDefault(f => f.Path == selectedPath);
+        if (follow is not null && StagedFiles.Contains(follow))
+        {
+            SelectedStagedFile = follow;
+        }
+        else if (follow is not null)
+        {
+            SelectedUnstagedFile = follow;
+        }
+        else if (SelectedCommitFile is null)
         {
             ClearDiff();
         }
         var changeCount = status.Unstaged.Count + status.Staged.Count;
         ChangesHeader = changeCount == 0 ? "Changes" : $"Changes ({changeCount})";
 
-        Replace(LocalBranches, branches.Where(b => !b.IsRemote).Select(b => new BranchItemViewModel(b)));
-        Replace(RemoteBranches, branches.Where(b => b.IsRemote).Select(b => new BranchItemViewModel(b)));
+        Replace(LocalBranches, branches.Where(b => !b.IsRemote).Select(b => new BranchItemViewModel(b, this)));
+        Replace(RemoteBranches, branches.Where(b => b.IsRemote).Select(b => new BranchItemViewModel(b, this)));
 
         var selectedSha = SelectedCommit?.Commit.Sha;
         var laneCount = Math.Min(rows.Count == 0 ? 1 : rows.Max(r => r.LaneCount), MaxGraphLanes);
         var graphWidth = laneCount * GraphLaneWidth + 8;
-        var items = commits.Select((c, i) => new CommitItemViewModel(c, rows[i], graphWidth)).ToList();
+        var items = commits.Select((c, i) => new CommitItemViewModel(c, rows[i], graphWidth, this)).ToList();
         // Only rebuild the graph when history or refs changed, so scroll position survives a refresh.
         if (!SameHistory(commits, Commits.Select(c => c.Commit).ToList()))
         {

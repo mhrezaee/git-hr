@@ -67,12 +67,35 @@ public enum DiffLineKind
     Context,
     Added,
     Removed,
+    /// <summary>The "\ No newline at end of file" marker.</summary>
+    NoNewline,
 }
 
-public sealed record DiffLine(DiffLineKind Kind, string Text)
+/// <param name="Text">Display text (line ending removed).</param>
+/// <param name="Raw">Exact line as git printed it (may keep a trailing CR); used to build patches.</param>
+public sealed record DiffLine(DiffLineKind Kind, string Text, int? OldLineNumber = null, int? NewLineNumber = null, string? Raw = null)
 {
-    public bool IsHeader => Kind == DiffLineKind.Header;
+    public string RawText => Raw ?? Text;
+    public bool IsHeader => Kind is DiffLineKind.Header or DiffLineKind.NoNewline;
     public bool IsHunk => Kind == DiffLineKind.Hunk;
     public bool IsAdded => Kind == DiffLineKind.Added;
     public bool IsRemoved => Kind == DiffLineKind.Removed;
+    public bool IsChange => Kind is DiffLineKind.Added or DiffLineKind.Removed;
+}
+
+/// <summary>A multi-step operation that is paused, typically because of conflicts.</summary>
+public enum RepositoryOperation
+{
+    None,
+    Merging,
+    Rebasing,
+    CherryPicking,
+    Reverting,
+}
+
+public enum ResetMode
+{
+    Soft,
+    Mixed,
+    Hard,
 }

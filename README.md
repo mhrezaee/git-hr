@@ -7,8 +7,12 @@ Windows first; macOS and Linux run from the same code.
 
 - Commit graph with colored lanes, merge nodes, branch and tag badges
 - Local and remote branches with ahead/behind info; double-click to check out (remote → local tracking branch)
-- Staging: stage and unstage single files or all files, commit (Ctrl+Enter)
-- Diff viewer for working-copy files and for files in any commit
+- Staging: stage and unstage files, **single hunks or selected lines** (Ctrl/Shift+click lines in the diff); commit (Ctrl+Enter)
+- Discard changes: per hunk, selected lines, per file, or everything (with confirmation)
+- Diff viewer with line numbers for working-copy files and for files in any commit
+- Branch context menu: checkout, merge into current, rebase onto, create from, rename, delete (local or on the remote)
+- Commit context menu: checkout (detached), create branch/tag here, cherry-pick, revert, reset (soft/mixed/hard), copy SHA
+- Merge/rebase/cherry-pick/revert conflicts: banner with Continue / Abort, conflicted files marked, merge message pre-filled
 - Fetch (all remotes, prune), pull, and push (first push publishes the branch and sets its upstream)
 - Stash / pop stash, create branches
 - **Command palette (Ctrl+P / Ctrl+Shift+P)**: fuzzy search over all commands (pull, push, fetch, commit, stage, stash…), check out any branch, open recent repositories, or type a new name to create a branch
@@ -51,7 +55,6 @@ Shortcuts: `Ctrl+P` command palette, `Ctrl+O` open, `F5` refresh, `Ctrl+Enter` c
 
 ## Roadmap
 
-- Line and hunk staging, discard changes
 - Stash list, tags, delete/rename branches, merge and rebase from the UI
 - Interactive rebase, conflict resolution
 - Clone dialog; GitHub/Azure DevOps integration (PRs)

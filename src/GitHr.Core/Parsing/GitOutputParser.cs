@@ -3,7 +3,7 @@ using System.Globalization;
 namespace GitHr.Core.Parsing;
 
 /// <summary>Parses machine-readable git output. Pure functions, so they are easy to unit test.</summary>
-public static class GitOutputParser
+public static partial class GitOutputParser
 {
     public const char FieldSeparator = '\x1f';
     public const char RecordSeparator = '\x1e';
@@ -296,36 +296,61 @@ public static class GitOutputParser
     {
         var lines = new List<DiffLine>();
         var inHeader = false;
-        foreach (var rawLine in output.Split('\n'))
+        int oldLine = 0, newLine = 0;
+        var rawLines = output.Split('\n');
+        for (var i = 0; i < rawLines.Length; i++)
         {
-            var line = rawLine.TrimEnd('\r');
+            var raw = rawLines[i];
+            if (i == rawLines.Length - 1 && raw.Length == 0)
+            {
+                break; // text after the final newline
+            }
+
+            var line = raw.TrimEnd('\r');
             if (line.StartsWith("diff --git ", StringComparison.Ordinal))
             {
                 inHeader = true;
-                lines.Add(new DiffLine(DiffLineKind.Header, line));
+                lines.Add(new DiffLine(DiffLineKind.Header, line, Raw: raw));
             }
             else if (line.StartsWith("@@", StringComparison.Ordinal))
             {
                 inHeader = false;
-                lines.Add(new DiffLine(DiffLineKind.Hunk, line));
+                (oldLine, newLine) = ParseHunkStarts(line);
+                lines.Add(new DiffLine(DiffLineKind.Hunk, line, Raw: raw));
             }
             else if (inHeader)
             {
-                lines.Add(new DiffLine(DiffLineKind.Header, line));
+                lines.Add(new DiffLine(DiffLineKind.Header, line, Raw: raw));
             }
             else if (line.StartsWith('+'))
             {
-                lines.Add(new DiffLine(DiffLineKind.Added, line));
+                lines.Add(new DiffLine(DiffLineKind.Added, line, NewLineNumber: newLine++, Raw: raw));
             }
             else if (line.StartsWith('-'))
             {
-                lines.Add(new DiffLine(DiffLineKind.Removed, line));
+                lines.Add(new DiffLine(DiffLineKind.Removed, line, OldLineNumber: oldLine++, Raw: raw));
             }
-            else if (line.Length > 0)
+            else if (line.StartsWith('\\'))
             {
-                lines.Add(new DiffLine(DiffLineKind.Context, line));
+                lines.Add(new DiffLine(DiffLineKind.NoNewline, line, Raw: raw));
+            }
+            else
+            {
+                lines.Add(new DiffLine(DiffLineKind.Context, line, oldLine++, newLine++, raw));
             }
         }
         return lines;
     }
+
+    /// <summary>Reads the start lines from <c>@@ -12,5 +14,7 @@</c>.</summary>
+    public static (int OldStart, int NewStart) ParseHunkStarts(string hunkHeader)
+    {
+        var match = HunkHeaderRegex().Match(hunkHeader);
+        return match.Success
+            ? (int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture))
+            : (1, 1);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")]
+    private static partial System.Text.RegularExpressions.Regex HunkHeaderRegex();
 }

@@ -89,6 +89,15 @@
             </Grid>
         </Border>
 
+        <!-- ================= Merge / rebase / cherry-pick in progress ================= -->
+        <Border DockPanel.Dock="Top" Background="#4A3B1C" Padding="12,6" IsVisible="{Binding HasOperation}">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Text="{Binding OperationHint}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="small accent" Content="Continue" Command="{Binding ContinueOperationCommand}" Margin="8,0,0,0" />
+                <Button Grid.Column="2" Classes="small danger" Content="Abort" Command="{Binding AbortOperationCommand}" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
         <Panel>
             <!-- ================= Welcome screen ================= -->
             <Grid IsVisible="{Binding !HasRepository}" RowDefinitions="Auto,Auto,*" Width="560" Margin="0,80,0,40">
@@ -132,7 +141,25 @@
                             <ListBox Classes="compact" ItemsSource="{Binding LocalBranches}" DoubleTapped="Branch_DoubleTapped">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:BranchItemViewModel">
-                                        <Grid ColumnDefinitions="14,*,Auto" ToolTip.Tip="Double-click to check out">
+                                        <Grid ColumnDefinitions="14,*,Auto" Background="Transparent"
+                                              ToolTip.Tip="Double-click to check out, right-click for more">
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Checkout" IsVisible="{Binding IsNotCurrent}"
+                                                              Command="{Binding Owner.CheckoutCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Merge into current branch" IsVisible="{Binding IsNotCurrent}"
+                                                              Command="{Binding Owner.MergeBranchCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Rebase current branch onto this…" IsVisible="{Binding IsNotCurrent}"
+                                                              Command="{Binding Owner.RebaseOntoBranchCommand}" CommandParameter="{Binding}" />
+                                                    <Separator IsVisible="{Binding IsNotCurrent}" />
+                                                    <MenuItem Header="Create branch from here…"
+                                                              Command="{Binding Owner.CreateBranchFromCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Rename…"
+                                                              Command="{Binding Owner.RenameBranchCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Delete…" IsVisible="{Binding IsNotCurrent}"
+                                                              Command="{Binding Owner.DeleteBranchCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
                                             <TextBlock Text="✓" Foreground="{StaticResource Accent}" IsVisible="{Binding IsCurrent}" />
                                             <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
                                                        FontWeight="{Binding IsCurrent, Converter={x:Static app:Converters.BoolToWeight}}" />
@@ -145,8 +172,24 @@
                             <ListBox Classes="compact" ItemsSource="{Binding RemoteBranches}" DoubleTapped="Branch_DoubleTapped">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:BranchItemViewModel">
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                                   ToolTip.Tip="Double-click to check out as a local tracking branch" />
+                                        <Border Background="Transparent" ToolTip.Tip="Double-click to check out as a local tracking branch">
+                                            <Border.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Checkout (local tracking branch)"
+                                                              Command="{Binding Owner.CheckoutCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Merge into current branch"
+                                                              Command="{Binding Owner.MergeBranchCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Rebase current branch onto this…"
+                                                              Command="{Binding Owner.RebaseOntoBranchCommand}" CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="Create branch from here…"
+                                                              Command="{Binding Owner.CreateBranchFromCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Delete from remote…"
+                                                              Command="{Binding Owner.DeleteBranchCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Border.ContextMenu>
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        </Border>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
@@ -161,7 +204,35 @@
                     <ListBox Classes="commits" ItemsSource="{Binding Commits}" SelectedItem="{Binding SelectedCommit}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:CommitItemViewModel">
-                                <Grid ColumnDefinitions="Auto,*,140,120,70" Height="28">
+                                <Grid ColumnDefinitions="Auto,*,140,120,70" Height="28" Background="Transparent">
+                                    <Grid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Checkout this commit…"
+                                                      Command="{Binding Owner.CheckoutCommitCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Create branch here…"
+                                                      Command="{Binding Owner.CreateBranchAtCommitCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Create tag here…"
+                                                      Command="{Binding Owner.CreateTagAtCommitCommand}" CommandParameter="{Binding}" />
+                                            <Separator />
+                                            <MenuItem Header="Cherry-pick onto current branch"
+                                                      Command="{Binding Owner.CherryPickCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Revert commit"
+                                                      Command="{Binding Owner.RevertCommitCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Reset current branch to here">
+                                                <MenuItem Header="Soft — keep changes staged"
+                                                          Command="{Binding Owner.ResetSoftCommand}" CommandParameter="{Binding}" />
+                                                <MenuItem Header="Mixed — keep changes unstaged"
+                                                          Command="{Binding Owner.ResetMixedCommand}" CommandParameter="{Binding}" />
+                                                <MenuItem Header="Hard — discard all changes…"
+                                                          Command="{Binding Owner.ResetHardCommand}" CommandParameter="{Binding}" />
+                                            </MenuItem>
+                                            <Separator />
+                                            <MenuItem Header="Copy SHA"
+                                                      Command="{Binding Owner.CopyShaCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Copy subject"
+                                                      Command="{Binding Owner.CopySubjectCommand}" CommandParameter="{Binding}" />
+                                        </ContextMenu>
+                                    </Grid.ContextMenu>
                                     <controls:CommitGraphCell Row="{Binding Graph}" Width="{Binding GraphWidth}" />
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" ClipToBounds="True">
                                         <ItemsControl ItemsSource="{Binding Refs}" IsVisible="{Binding HasRefs}">
@@ -195,17 +266,43 @@
                     <GridSplitter Grid.Row="1" ResizeDirection="Rows" />
 
                     <DockPanel Grid.Row="2" Background="{StaticResource PanelBackground}">
-                        <TextBlock DockPanel.Dock="Top" Classes="section" Margin="12,6"
-                                   Text="{Binding DiffTitle, TargetNullValue='Select a file to see its diff'}" />
-                        <ListBox Classes="diff" ItemsSource="{Binding DiffLines}" Background="{StaticResource AppBackground}">
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,8,0">
+                            <TextBlock Classes="section" Margin="12,6" TextTrimming="CharacterEllipsis"
+                                       Text="{Binding DiffTitle, TargetNullValue='Select a file to see its diff'}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <TextBlock Classes="muted" FontSize="11" VerticalAlignment="Center" Text="Ctrl/Shift+click to select lines"
+                                           IsVisible="{Binding CurrentDiffMode, Converter={x:Static app:Converters.IsEditableDiff}}" />
+                                <Button Classes="small" Content="Stage lines" IsVisible="{Binding IsUnstagedDiff}"
+                                        Command="{Binding StageLinesCommand}" ToolTip.Tip="Stage only the selected lines" />
+                                <Button Classes="small danger" Content="Discard lines" IsVisible="{Binding IsUnstagedDiff}"
+                                        Command="{Binding DiscardLinesCommand}" ToolTip.Tip="Discard only the selected lines" />
+                                <Button Classes="small" Content="Unstage lines" IsVisible="{Binding IsStagedDiff}"
+                                        Command="{Binding UnstageLinesCommand}" ToolTip.Tip="Unstage only the selected lines" />
+                            </StackPanel>
+                        </Grid>
+                        <ListBox x:Name="DiffList" Classes="diff" ItemsSource="{Binding DiffLines}" SelectionMode="Multiple"
+                                 SelectionChanged="DiffList_SelectionChanged" Background="{StaticResource AppBackground}">
                             <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="core:DiffLine">
+                                <DataTemplate x:DataType="vm:DiffLineViewModel">
                                     <Border Classes="diffline"
                                             Classes.added="{Binding IsAdded}"
                                             Classes.removed="{Binding IsRemoved}"
                                             Classes.hunk="{Binding IsHunk}"
                                             Classes.header="{Binding IsHeader}">
-                                        <TextBlock Text="{Binding Text}" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                                        <Grid ColumnDefinitions="40,40,*,Auto">
+                                            <TextBlock Text="{Binding OldNumber}" Classes="lineno" />
+                                            <TextBlock Grid.Column="1" Text="{Binding NewNumber}" Classes="lineno" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Text}" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                                       VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="4,1">
+                                                <Button Classes="small" Content="Stage hunk" IsVisible="{Binding ShowStageHunk}"
+                                                        Command="{Binding Owner.StageHunkCommand}" CommandParameter="{Binding}" />
+                                                <Button Classes="small danger" Content="Discard hunk" IsVisible="{Binding ShowStageHunk}"
+                                                        Command="{Binding Owner.DiscardHunkCommand}" CommandParameter="{Binding}" />
+                                                <Button Classes="small" Content="Unstage hunk" IsVisible="{Binding ShowUnstageHunk}"
+                                                        Command="{Binding Owner.UnstageHunkCommand}" CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -222,13 +319,17 @@
                         <Grid RowDefinitions="Auto,*,Auto,*,Auto">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Classes="section" Text="{Binding UnstagedFiles.Count, StringFormat='UNSTAGED ({0})'}" />
-                                <Button Grid.Column="1" Classes="small" Content="Stage all" Command="{Binding StageAllCommand}" Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,8,0">
+                                    <Button Classes="small danger" Content="Discard all" Command="{Binding DiscardAllCommand}"
+                                            ToolTip.Tip="Discard all unstaged changes and delete untracked files" />
+                                    <Button Classes="small" Content="Stage all" Command="{Binding StageAllCommand}" />
+                                </StackPanel>
                             </Grid>
                             <ListBox Grid.Row="1" Classes="compact" ItemsSource="{Binding UnstagedFiles}"
                                      SelectedItem="{Binding SelectedUnstagedFile}" DoubleTapped="UnstagedFile_DoubleTapped">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:FileChangeItemViewModel">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ToolTip.Tip="{Binding ToolTip}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
                                             <Border Width="18" Height="18" CornerRadius="3" Margin="0,0,8,0"
                                                     Background="{Binding Kind, Converter={x:Static app:Converters.FileKindBrush}}">
                                                 <TextBlock Text="{Binding KindLetter}" FontSize="11" FontWeight="Bold" Foreground="White"
@@ -240,8 +341,13 @@
                                                            TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                             <Button Grid.Column="2" Classes="small" Content="Stage" ToolTip.Tip="Stage this file"
-                                                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).StageFileCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                    Command="{Binding Owner.StageFileCommand}" CommandParameter="{Binding}" />
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Stage" Command="{Binding Owner.StageFileCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Discard changes…" Command="{Binding Owner.DiscardFileCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -255,7 +361,7 @@
                                      SelectedItem="{Binding SelectedStagedFile}" DoubleTapped="StagedFile_DoubleTapped">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:FileChangeItemViewModel">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ToolTip.Tip="{Binding ToolTip}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
                                             <Border Width="18" Height="18" CornerRadius="3" Margin="0,0,8,0"
                                                     Background="{Binding Kind, Converter={x:Static app:Converters.FileKindBrush}}">
                                                 <TextBlock Text="{Binding KindLetter}" FontSize="11" FontWeight="Bold" Foreground="White"
@@ -267,8 +373,12 @@
                                                            TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
                                             <Button Grid.Column="2" Classes="small" Content="Unstage" ToolTip.Tip="Unstage this file"
-                                                    Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).UnstageFileCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                    Command="{Binding Owner.UnstageFileCommand}" CommandParameter="{Binding}" />
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Unstage" Command="{Binding Owner.UnstageFileCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>

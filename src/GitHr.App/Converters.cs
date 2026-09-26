@@ -18,6 +18,9 @@ public static class Converters
 
     public static readonly IValueConverter IsPositive = new FuncValueConverter<int, bool>(n => n > 0);
 
+    public static readonly IValueConverter IsEditableDiff =
+        new FuncValueConverter<GitHr.App.ViewModels.DiffMode, bool>(m => m != GitHr.App.ViewModels.DiffMode.ReadOnly);
+
     public static readonly IValueConverter FileKindBrush = new FuncValueConverter<FileChangeKind, IBrush>(kind => kind switch
     {
         FileChangeKind.Added or FileChangeKind.Untracked => Green,

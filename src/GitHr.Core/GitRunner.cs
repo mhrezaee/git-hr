@@ -52,6 +52,8 @@ public sealed class GitRunner
         // A GUI has no terminal: never let git block waiting for terminal input.
         // Credential helpers (e.g. Git Credential Manager) still show their own login windows.
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        // Never open an editor (merge/rebase/cherry-pick --continue): accept the prepared message as-is.
+        startInfo.Environment["GIT_EDITOR"] = "true";
         // Background refreshes (status) must not take locks that conflict with the user's own git commands.
         startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
 
