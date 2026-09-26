@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using GitHr.App.ViewModels;
 
@@ -20,8 +19,8 @@ public sealed class ActionsTests : UiTestBase
         return (window, vm);
     }
 
-    [AvaloniaFact]
-    public async Task StageHunkButton_StagesOnlyThatHunk_AndDiffFollowsTheFile()
+    [Fact]
+    public Task StageHunkButton_StagesOnlyThatHunk_AndDiffFollowsTheFile() => RunUi(async () =>
     {
         var (window, vm) = await OpenWithTwoHunksAsync();
         SaveFrame(window, "githr-diff-hunks.png");
@@ -37,10 +36,10 @@ public sealed class ActionsTests : UiTestBase
         // The unstaged diff is reloaded and now has only the remaining hunk.
         await WaitUntilAsync(() => vm.DiffLines.Count(l => l.IsHunk) == 1);
         Assert.Contains(vm.DiffLines, l => l.Text == "+line 19 changed");
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task SelectLines_ThenStageLinesButton()
+    [Fact]
+    public Task SelectLines_ThenStageLinesButton() => RunUi(async () =>
     {
         var (window, vm) = await OpenWithTwoHunksAsync();
         var list = window.FindControl<ListBox>("DiffList")!;
@@ -55,10 +54,10 @@ public sealed class ActionsTests : UiTestBase
         var staged = await RunGitAsync("diff", "--cached");
         Assert.Contains("+line 19 changed", staged);
         Assert.DoesNotContain("line 2 changed", staged);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task UnstageHunk_FromStagedDiff()
+    [Fact]
+    public Task UnstageHunk_FromStagedDiff() => RunUi(async () =>
     {
         var (window, vm) = await OpenWithTwoHunksAsync();
         await RunGitAsync("add", "f.txt");
@@ -72,10 +71,10 @@ public sealed class ActionsTests : UiTestBase
         var staged = await RunGitAsync("diff", "--cached");
         Assert.DoesNotContain("line 2 changed", staged);
         Assert.Contains("+line 19 changed", staged);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task DiscardHunk_AsksFirst_AndRespectsCancel()
+    [Fact]
+    public Task DiscardHunk_AsksFirst_AndRespectsCancel() => RunUi(async () =>
     {
         var (window, vm) = await OpenWithTwoHunksAsync();
 
@@ -90,10 +89,10 @@ public sealed class ActionsTests : UiTestBase
         var content = await File.ReadAllTextAsync(Path.Combine(Dir, "f.txt"));
         Assert.DoesNotContain("line 2 changed", content);
         Assert.Contains("line 19 changed", content);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task DiscardAll_RemovesChangesAndUntrackedFiles()
+    [Fact]
+    public Task DiscardAll_RemovesChangesAndUntrackedFiles() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
         await WriteAsync("a.txt", "changed\n");
@@ -106,10 +105,10 @@ public sealed class ActionsTests : UiTestBase
 
         Assert.Contains(Questions, q => q.Contains("1 untracked file(s) will be deleted"));
         Assert.False(File.Exists(Path.Combine(Dir, "new.txt")));
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task DiscardFile_FromContextMenu()
+    [Fact]
+    public Task DiscardFile_FromContextMenu() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
         await WriteAsync("a.txt", "changed\n");
@@ -119,10 +118,10 @@ public sealed class ActionsTests : UiTestBase
         await WaitUntilAsync(() => !vm.IsBusy && vm.UnstagedFiles.Count == 0);
 
         Assert.Equal("a\n", await File.ReadAllTextAsync(Path.Combine(Dir, "a.txt")));
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task CommitContextMenu_CreateTagAndBranch_CherryPick()
+    [Fact]
+    public Task CommitContextMenu_CreateTagAndBranch_CherryPick() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync(async () =>
         {
@@ -143,10 +142,10 @@ public sealed class ActionsTests : UiTestBase
         RunContextMenuItem(window, RowOf(window, vm.Commits.Single(c => c.Subject == "Add login")), "Cherry-pick onto current branch");
         await WaitUntilAsync(() => !vm.IsBusy && File.Exists(Path.Combine(Dir, "login.txt")));
         Assert.Equal("Add login", (await RunGitAsync("log", "-1", "--format=%s", "hotfix")).Trim());
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task CommitContextMenu_ResetHard_AsksAsDestructive()
+    [Fact]
+    public Task CommitContextMenu_ResetHard_AsksAsDestructive() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync(() => CommitAsync("b.txt", "b\n", "Second"));
 
@@ -155,10 +154,10 @@ public sealed class ActionsTests : UiTestBase
 
         Assert.Contains(Questions, q => q.StartsWith("Reset (hard)"));
         Assert.False(File.Exists(Path.Combine(Dir, "b.txt")));
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task BranchContextMenu_RenameAndDelete()
+    [Fact]
+    public Task BranchContextMenu_RenameAndDelete() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
 
@@ -168,10 +167,10 @@ public sealed class ActionsTests : UiTestBase
 
         RunContextMenuItem(window, RowOf(window, vm.LocalBranches.Single(b => b.Name == "feature/signin")), "Delete…");
         await WaitUntilAsync(() => !vm.IsBusy && vm.LocalBranches.All(b => b.Name != "feature/signin"));
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task MergeConflict_ShowsBanner_AbortRestores()
+    [Fact]
+    public Task MergeConflict_ShowsBanner_AbortRestores() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync(async () =>
         {
@@ -194,7 +193,7 @@ public sealed class ActionsTests : UiTestBase
 
         Assert.Equal("main\n", await File.ReadAllTextAsync(Path.Combine(Dir, "a.txt")));
         Assert.Equal("", vm.CommitMessage); // prefilled message cleared again
-    }
+    });
 
     /// <summary>The visual row (item container content) showing <paramref name="item"/>.</summary>
     private static Control RowOf(Window window, object item)

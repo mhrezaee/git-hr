@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using GitHr.App.ViewModels;
 using GitHr.App.Views;
@@ -10,8 +9,8 @@ namespace GitHr.App.Tests;
 
 public sealed class CloneAndAmendTests : UiTestBase
 {
-    [AvaloniaFact]
-    public async Task CloneButton_ShowsDialog_ClonesWithLiveProgress_AndOpensTheClone()
+    [Fact]
+    public Task CloneButton_ShowsDialog_ClonesWithLiveProgress_AndOpensTheClone() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync(); // Dir becomes the "remote" we clone from
         var clonesFolder = Dir + "-clones";
@@ -43,10 +42,10 @@ public sealed class CloneAndAmendTests : UiTestBase
         Assert.Contains(busyTexts, t => t.StartsWith($"Cloning {expectedName}:") && t.Contains("objects", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(vm.RemoteBranches, b => b.Name == "origin/main");
         TryDelete(clonesFolder);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task CloneDialog_DerivesFolderName_UntilUserEditsIt()
+    [Fact]
+    public Task CloneDialog_DerivesFolderName_UntilUserEditsIt() => RunUi(async () =>
     {
         var parent = Directory.CreateDirectory(Dir).FullName;
         var vm = new CloneDialogViewModel(parent);
@@ -82,7 +81,7 @@ public sealed class CloneAndAmendTests : UiTestBase
         Dispatcher.UIThread.RunJobs();
         Assert.False(cloneButton.IsEnabled);
         dialog.Close();
-    }
+    });
 
     [Theory]
     [InlineData("https://github.com/a/b.git", "https://github.com/a/b.git")]
@@ -105,8 +104,8 @@ public sealed class CloneAndAmendTests : UiTestBase
         Assert.Equal(expected, MainViewModel.ParsePercent(line));
     }
 
-    [AvaloniaFact]
-    public async Task AmendCheckbox_PrefillsMessage_AndAmendsWithStagedFile()
+    [Fact]
+    public Task AmendCheckbox_PrefillsMessage_AndAmendsWithStagedFile() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
         await WriteAsync("forgotten.txt", "oops\n");
@@ -126,10 +125,10 @@ public sealed class CloneAndAmendTests : UiTestBase
         Assert.Contains("forgotten.txt", await RunGitAsync("show", "--name-only", "--format=", "HEAD"));
         Assert.Equal("", vm.CommitMessage);
         Assert.Empty(Questions); // not pushed, so no warning
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task Amend_RewordOnly_AndUncheckRestoresEmptyMessage()
+    [Fact]
+    public Task Amend_RewordOnly_AndUncheckRestoresEmptyMessage() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
 
@@ -145,7 +144,7 @@ public sealed class CloneAndAmendTests : UiTestBase
         await WaitUntilAsync(() => !vm.IsBusy && !vm.IsAmend);
 
         Assert.Equal("Initial commit, reworded", (await RunGitAsync("log", "-1", "--format=%s")).Trim());
-    }
+    });
 
     private static void TryDelete(string dir)
     {

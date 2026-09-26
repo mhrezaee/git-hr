@@ -25,6 +25,9 @@ public abstract class UiTestBase : IDisposable
     protected string? PromptAnswer;
     protected readonly List<string> Questions = [];
 
+    /// <summary>Wraps a UI test body: <c>[Fact] public Task MyTest() => RunUi(async () => { ... });</c></summary>
+    protected static Task RunUi(Func<Task> test) => UiSession.RunAsync(test);
+
     public void Dispose()
     {
         try

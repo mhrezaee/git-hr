@@ -7,7 +7,7 @@ public sealed class GitRepositoryTests : IAsyncLifetime
     private readonly GitRunner _git = new();
     private GitRepository _repo = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         Directory.CreateDirectory(_dir);
         await Git("init", "-b", "main");
@@ -19,7 +19,7 @@ public sealed class GitRepositoryTests : IAsyncLifetime
         _repo = await GitRepository.OpenAsync(_dir, _git);
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         try
         {
@@ -30,14 +30,14 @@ public sealed class GitRepositoryTests : IAsyncLifetime
             Directory.Delete(_dir, recursive: true);
         }
         catch (IOException) { }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     [Fact]
     public async Task EmptyRepository_HasNoCommits()
     {
-        Assert.Empty(await _repo.GetCommitsAsync());
-        var status = await _repo.GetStatusAsync();
+        Assert.Empty(await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        var status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal("main", status.BranchName);
     }
 
@@ -46,7 +46,7 @@ public sealed class GitRepositoryTests : IAsyncLifetime
     {
         var sub = Directory.CreateDirectory(Path.Combine(_dir, "a", "b")).FullName;
 
-        var repo = await GitRepository.OpenAsync(sub, _git);
+        var repo = await GitRepository.OpenAsync(sub, _git, TestContext.Current.CancellationToken);
 
         Assert.Equal(Path.GetFullPath(_dir), repo.Root, ignoreCase: true);
     }
@@ -57,7 +57,7 @@ public sealed class GitRepositoryTests : IAsyncLifetime
         var outside = Directory.CreateTempSubdirectory("githr-norepo").FullName;
         try
         {
-            await Assert.ThrowsAsync<GitException>(() => GitRepository.OpenAsync(outside, _git));
+            await Assert.ThrowsAsync<GitException>(() => GitRepository.OpenAsync(outside, _git, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -68,68 +68,68 @@ public sealed class GitRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task StageUnstageCommitAndBranch_FullWorkflow()
     {
-        await File.WriteAllTextAsync(Path.Combine(_dir, "readme.md"), "hello\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "readme.md"), "hello\n", TestContext.Current.CancellationToken);
 
-        var status = await _repo.GetStatusAsync();
+        var status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal([new FileChange("readme.md", FileChangeKind.Untracked)], status.Unstaged);
-        var untrackedDiff = await _repo.GetWorkingDiffAsync(status.Unstaged[0], staged: false);
+        var untrackedDiff = await _repo.GetWorkingDiffAsync(status.Unstaged[0], staged: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(untrackedDiff, l => l is { Kind: DiffLineKind.Added, Text: "+hello" });
 
         // Unstage works even before the first commit (no HEAD yet).
-        await _repo.StageAsync(["readme.md"]);
-        await _repo.UnstageAsync(["readme.md"]);
-        Assert.Empty((await _repo.GetStatusAsync()).Staged);
+        await _repo.StageAsync(["readme.md"], TestContext.Current.CancellationToken);
+        await _repo.UnstageAsync(["readme.md"], TestContext.Current.CancellationToken);
+        Assert.Empty((await _repo.GetStatusAsync(TestContext.Current.CancellationToken)).Staged);
 
-        await _repo.StageAllAsync();
-        status = await _repo.GetStatusAsync();
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+        status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal([new FileChange("readme.md", FileChangeKind.Added)], status.Staged);
 
-        await _repo.CommitAsync("First commit\n\nWith a body");
-        await File.WriteAllTextAsync(Path.Combine(_dir, "readme.md"), "hello world\n");
-        await _repo.StageAllAsync();
-        await _repo.CommitAsync("Second commit");
+        await _repo.CommitAsync("First commit\n\nWith a body", cancellationToken: TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "readme.md"), "hello world\n", TestContext.Current.CancellationToken);
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+        await _repo.CommitAsync("Second commit", cancellationToken: TestContext.Current.CancellationToken);
 
-        await _repo.CreateBranchAsync("feature/x");
-        await File.WriteAllTextAsync(Path.Combine(_dir, "feature.txt"), "feature\n");
-        await _repo.StageAllAsync();
-        await _repo.CommitAsync("Feature work");
+        await _repo.CreateBranchAsync("feature/x", cancellationToken: TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "feature.txt"), "feature\n", TestContext.Current.CancellationToken);
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+        await _repo.CommitAsync("Feature work", cancellationToken: TestContext.Current.CancellationToken);
 
-        var commits = await _repo.GetCommitsAsync();
+        var commits = await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(["Feature work", "Second commit", "First commit"], commits.Select(c => c.Subject));
         Assert.Contains(new GitRef("feature/x", GitRefKind.LocalBranch, IsCurrent: true), commits[0].Refs);
         Assert.Contains(new GitRef("main", GitRefKind.LocalBranch), commits[1].Refs);
-        Assert.Equal("First commit\n\nWith a body", await _repo.GetCommitMessageAsync(commits[2].Sha));
+        Assert.Equal("First commit\n\nWith a body", await _repo.GetCommitMessageAsync(commits[2].Sha, TestContext.Current.CancellationToken));
 
-        var branches = await _repo.GetBranchesAsync();
+        var branches = await _repo.GetBranchesAsync(TestContext.Current.CancellationToken);
         Assert.Equal(["feature/x", "main"], branches.Select(b => b.Name));
         Assert.True(branches.Single(b => b.Name == "feature/x").IsCurrent);
 
         // Commit details, including the root commit.
-        Assert.Equal([new FileChange("feature.txt", FileChangeKind.Added)], await _repo.GetCommitChangesAsync(commits[0]));
-        Assert.Equal([new FileChange("readme.md", FileChangeKind.Added)], await _repo.GetCommitChangesAsync(commits[2]));
-        var diff = await _repo.GetCommitDiffAsync(commits[1], new FileChange("readme.md", FileChangeKind.Modified));
+        Assert.Equal([new FileChange("feature.txt", FileChangeKind.Added)], await _repo.GetCommitChangesAsync(commits[0], TestContext.Current.CancellationToken));
+        Assert.Equal([new FileChange("readme.md", FileChangeKind.Added)], await _repo.GetCommitChangesAsync(commits[2], TestContext.Current.CancellationToken));
+        var diff = await _repo.GetCommitDiffAsync(commits[1], new FileChange("readme.md", FileChangeKind.Modified), TestContext.Current.CancellationToken);
         Assert.Contains(diff, l => l is { Kind: DiffLineKind.Removed, Text: "-hello" });
         Assert.Contains(diff, l => l is { Kind: DiffLineKind.Added, Text: "+hello world" });
 
-        await _repo.CheckoutAsync(branches.Single(b => b.Name == "main"));
-        Assert.Equal("main", (await _repo.GetStatusAsync()).BranchName);
+        await _repo.CheckoutAsync(branches.Single(b => b.Name == "main"), TestContext.Current.CancellationToken);
+        Assert.Equal("main", (await _repo.GetStatusAsync(TestContext.Current.CancellationToken)).BranchName);
     }
 
     [Fact]
     public async Task StashAndPop_RestoresChanges()
     {
-        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "a\n");
-        await _repo.StageAllAsync();
-        await _repo.CommitAsync("Initial");
-        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "changed\n");
-        await File.WriteAllTextAsync(Path.Combine(_dir, "new.txt"), "new\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "a\n", TestContext.Current.CancellationToken);
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+        await _repo.CommitAsync("Initial", cancellationToken: TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "changed\n", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "new.txt"), "new\n", TestContext.Current.CancellationToken);
 
-        await _repo.StashAsync("wip");
-        var stashed = await _repo.GetStatusAsync();
+        await _repo.StashAsync("wip", TestContext.Current.CancellationToken);
+        var stashed = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Empty(stashed.Unstaged);
 
-        await _repo.StashPopAsync();
-        var restored = await _repo.GetStatusAsync();
+        await _repo.StashPopAsync(TestContext.Current.CancellationToken);
+        var restored = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal(["a.txt", "new.txt"], restored.Unstaged.Select(c => c.Path).Order());
     }
 
@@ -137,21 +137,21 @@ public sealed class GitRepositoryTests : IAsyncLifetime
     public async Task PushPullFetch_AgainstLocalRemote()
     {
         var remoteDir = _dir + "-remote.git";
-        await _git.RunAsync(Path.GetTempPath(), ["init", "--bare", "-b", "main", remoteDir]);
+        await _git.RunAsync(Path.GetTempPath(), ["init", "--bare", "-b", "main", remoteDir], cancellationToken: TestContext.Current.CancellationToken);
         try
         {
             await Git("remote", "add", "origin", remoteDir);
-            await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "a\n");
-            await _repo.StageAllAsync();
-            await _repo.CommitAsync("Initial");
+            await File.WriteAllTextAsync(Path.Combine(_dir, "a.txt"), "a\n", TestContext.Current.CancellationToken);
+            await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+            await _repo.CommitAsync("Initial", cancellationToken: TestContext.Current.CancellationToken);
 
-            await _repo.PushAsync(); // first push sets upstream
-            var status = await _repo.GetStatusAsync();
+            await _repo.PushAsync(cancellationToken: TestContext.Current.CancellationToken); // first push sets upstream
+            var status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
             Assert.Equal("origin/main", status.Upstream);
 
-            await _repo.FetchAsync();
-            await _repo.PullAsync();
-            var branches = await _repo.GetBranchesAsync();
+            await _repo.FetchAsync(cancellationToken: TestContext.Current.CancellationToken);
+            await _repo.PullAsync(cancellationToken: TestContext.Current.CancellationToken);
+            var branches = await _repo.GetBranchesAsync(TestContext.Current.CancellationToken);
             Assert.Contains(branches, b => b is { Name: "origin/main", IsRemote: true });
         }
         finally

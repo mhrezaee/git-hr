@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using GitHr.App.ViewModels;
@@ -9,8 +8,8 @@ namespace GitHr.App.Tests;
 
 public sealed class CommandPaletteTests : UiTestBase
 {
-    [AvaloniaFact]
-    public async Task CtrlP_OpensPalette_TypingFilters_EscapeCloses()
+    [Fact]
+    public Task CtrlP_OpensPalette_TypingFilters_EscapeCloses() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
 
@@ -31,10 +30,10 @@ public sealed class CommandPaletteTests : UiTestBase
         window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
         Assert.False(vm.Palette.IsOpen);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task Enter_RunsSelectedCommand_Stash()
+    [Fact]
+    public Task Enter_RunsSelectedCommand_Stash() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
         await WriteAsync("wip.txt", "work in progress\n");
@@ -51,10 +50,10 @@ public sealed class CommandPaletteTests : UiTestBase
 
         await WaitUntilAsync(() => !vm.IsBusy && vm.UnstagedFiles.Count == 0);
         Assert.False(vm.Palette.IsOpen);
-    }
+    });
 
-    [AvaloniaFact]
-    public async Task TypingNewName_OffersCreateBranch_ArrowKeysSelect()
+    [Fact]
+    public Task TypingNewName_OffersCreateBranch_ArrowKeysSelect() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
 
@@ -72,7 +71,7 @@ public sealed class CommandPaletteTests : UiTestBase
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
 
         await WaitUntilAsync(() => !vm.IsBusy && vm.CurrentBranch == "my-feature");
-    }
+    });
 
     [Fact]
     public void Score_MatchesPrefixSubstringAndFuzzy()

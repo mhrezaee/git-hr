@@ -4,6 +4,8 @@
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
 ![Tests](https://img.shields.io/badge/tests-81%20passing-2EA44F)
+![Core coverage](https://img.shields.io/badge/core%20coverage-91%25%20lines-2EA44F)
+![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A fast, free, cross-platform Git GUI built with C#, .NET 10 and Avalonia UI.
@@ -217,7 +219,9 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**81 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary.
+**81 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 90.7% line and 83.7% branch coverage.**
+
+The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
 ```mermaid
 flowchart TB
@@ -242,6 +246,34 @@ Test isolation:
 - UI tests use a temporary settings file, so they never touch the user's recent repositories.
 - Remote scenarios use local bare repositories over `file://`, which exercises git's real transport (including progress output) without network access.
 - UI tests run off-screen: input goes to the window in memory, never to the desktop.
+- Every git call in the tests receives the test's cancellation token, so a cancelled or timed-out run also stops the git processes it started.
+
+### How the UI tests run
+
+UI tests are plain xUnit `[Fact]`s whose body runs on Avalonia's UI thread through a `HeadlessUnitTestSession` (see `tests/GitHr.App.Tests/TestAppBuilder.cs`):
+
+```csharp
+[Fact]
+public Task StageHunkButton_StagesOnlyThatHunk() => RunUi(async () =>
+{
+    var (window, vm) = await OpenWithTwoHunksAsync();
+    Click(window, FindButton(window, "Stage hunk"));
+    await WaitUntilAsync(() => vm.StagedFiles.Count == 1);
+    // ...
+});
+```
+
+```mermaid
+flowchart LR
+    X["xUnit v4<br/>[Fact]"] --> R["RunUi(...)"]
+    R --> S["HeadlessUnitTestSession<br/>(PerTest isolation: fresh App per test)"]
+    S --> D["Avalonia UI thread<br/>headless platform + Skia"]
+    D --> W["real MainWindow<br/>simulated keyboard & mouse"]
+```
+
+- **Why not `Avalonia.Headless.XUnit`'s `[AvaloniaFact]`?** It is compiled against xUnit v3 and breaks on v4 (`MissingMethodException` during discovery). Driving the session directly keeps the suite on the latest xUnit and independent of that adapter's release schedule.
+- **Each test gets a fresh `App`** (`AvaloniaTestIsolationLevel.PerTest`), like a real application start.
+- **The UI suite runs sequentially** (`[assembly: Parallelization(Mode = ParallelMode.None)]`): all UI tests share one dispatcher thread, and parallel classes would interleave their steps on it. The Core suite runs in parallel.
 
 ---
 
@@ -263,6 +295,8 @@ dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
 dotnet test                                        # all 81 tests
+dotnet test --project tests/GitHr.App.Tests        # one suite
+dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
 ```
 
 ### Keyboard shortcuts
@@ -297,9 +331,10 @@ GitHr/
 │       ├── Controls/CommitGraphCell.cs
 │       ├── AppSettings.cs          # recent repositories, clone folder (per-user app data)
 │       └── Converters.cs
-└── tests/
-    ├── GitHr.Core.Tests/           # unit + integration tests against real repositories
-    └── GitHr.App.Tests/            # headless UI tests
+├── tests/
+│   ├── GitHr.Core.Tests/           # unit + integration tests against real repositories (xUnit v4)
+│   └── GitHr.App.Tests/            # headless UI tests (xUnit v4 + HeadlessUnitTestSession)
+└── global.json                     # opts `dotnet test` into Microsoft.Testing.Platform
 ```
 
 ---

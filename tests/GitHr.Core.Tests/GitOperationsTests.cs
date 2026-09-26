@@ -9,7 +9,7 @@ public sealed class GitOperationsTests : IAsyncLifetime
 
     private static readonly string TwentyLines = string.Concat(Enumerable.Range(1, 20).Select(i => $"line {i}\n"));
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         Directory.CreateDirectory(_dir);
         await Git("init", "-b", "main");
@@ -21,7 +21,7 @@ public sealed class GitOperationsTests : IAsyncLifetime
         await CommitFileAsync("f.txt", TwentyLines, "Initial");
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         foreach (var dir in new[] { _dir, _dir + "-remote.git" }.Where(Directory.Exists))
         {
@@ -35,7 +35,7 @@ public sealed class GitOperationsTests : IAsyncLifetime
             }
             catch (IOException) { }
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     // ---------- Partial staging ----------
@@ -45,16 +45,16 @@ public sealed class GitOperationsTests : IAsyncLifetime
     {
         await WriteAsync("f.txt", TwentyLines.Replace("line 2\n", "line 2 changed\n").Replace("line 19\n", "line 19 changed\n"));
         var file = new FileChange("f.txt", FileChangeKind.Modified);
-        var diff = await _repo.GetWorkingDiffAsync(file, staged: false);
+        var diff = await _repo.GetWorkingDiffAsync(file, staged: false, cancellationToken: TestContext.Current.CancellationToken);
         var hunks = diff.Select((l, i) => (l, i)).Where(x => x.l.IsHunk).Select(x => x.i).ToList();
         Assert.Equal(2, hunks.Count);
 
-        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, PatchBuilder.ChangesInHunk(diff, hunks[0]), reverse: false)!, cached: true, reverse: false);
+        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, PatchBuilder.ChangesInHunk(diff, hunks[0]), reverse: false)!, cached: true, reverse: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var staged = await _repo.GetWorkingDiffAsync(file, staged: true);
+        var staged = await _repo.GetWorkingDiffAsync(file, staged: true, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(staged, l => l.Text == "+line 2 changed");
         Assert.DoesNotContain(staged, l => l.Text == "+line 19 changed");
-        var unstaged = await _repo.GetWorkingDiffAsync(file, staged: false);
+        var unstaged = await _repo.GetWorkingDiffAsync(file, staged: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(unstaged, l => l.Text == "+line 19 changed");
         Assert.DoesNotContain(unstaged, l => l.Text == "+line 2 changed");
     }
@@ -64,17 +64,17 @@ public sealed class GitOperationsTests : IAsyncLifetime
     {
         await WriteAsync("f.txt", TwentyLines.Replace("line 5\n", "five\n").Replace("line 6\n", "six\n"));
         var file = new FileChange("f.txt", FileChangeKind.Modified);
-        var diff = await _repo.GetWorkingDiffAsync(file, staged: false);
+        var diff = await _repo.GetWorkingDiffAsync(file, staged: false, cancellationToken: TestContext.Current.CancellationToken);
         var removeFive = IndexOf(diff, "-line 5");
         var addFive = IndexOf(diff, "+five");
 
-        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, new HashSet<int> { removeFive, addFive }, reverse: false)!, cached: true, reverse: false);
+        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, new HashSet<int> { removeFive, addFive }, reverse: false)!, cached: true, reverse: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(TwentyLines.Replace("line 5\n", "five\n"), await ShowIndexAsync("f.txt"));
 
         // Unstage just the "+five" line: index gets "line 5" removed but nothing added.
-        var staged = await _repo.GetWorkingDiffAsync(file, staged: true);
-        await _repo.ApplyPatchAsync(PatchBuilder.Build(staged, new HashSet<int> { IndexOf(staged, "+five") }, reverse: true)!, cached: true, reverse: true);
+        var staged = await _repo.GetWorkingDiffAsync(file, staged: true, cancellationToken: TestContext.Current.CancellationToken);
+        await _repo.ApplyPatchAsync(PatchBuilder.Build(staged, new HashSet<int> { IndexOf(staged, "+five") }, reverse: true)!, cached: true, reverse: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(TwentyLines.Replace("line 5\n", ""), await ShowIndexAsync("f.txt"));
         Assert.Equal(TwentyLines.Replace("line 5\n", "five\n").Replace("line 6\n", "six\n"), await ReadAsync("f.txt")); // working tree untouched
@@ -84,11 +84,11 @@ public sealed class GitOperationsTests : IAsyncLifetime
     public async Task DiscardSelectedLines_RestoresLineInPlace()
     {
         await WriteAsync("f.txt", TwentyLines.Replace("line 5\n", "five\n").Replace("line 6\n", "six\n"));
-        var diff = await _repo.GetWorkingDiffAsync(new FileChange("f.txt", FileChangeKind.Modified), staged: false);
+        var diff = await _repo.GetWorkingDiffAsync(new FileChange("f.txt", FileChangeKind.Modified), staged: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // Discard only the second replacement (line 6 -> six).
         var patch = PatchBuilder.Build(diff, new HashSet<int> { IndexOf(diff, "-line 6"), IndexOf(diff, "+six") }, reverse: true)!;
-        await _repo.ApplyPatchAsync(patch, cached: false, reverse: true);
+        await _repo.ApplyPatchAsync(patch, cached: false, reverse: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(TwentyLines.Replace("line 5\n", "five\n"), await ReadAsync("f.txt"));
     }
@@ -97,10 +97,10 @@ public sealed class GitOperationsTests : IAsyncLifetime
     public async Task DiscardHunk_RevertsOnlyThatPartOfTheWorkingTree()
     {
         await WriteAsync("f.txt", TwentyLines.Replace("line 2\n", "line 2 changed\n").Replace("line 19\n", "line 19 changed\n"));
-        var diff = await _repo.GetWorkingDiffAsync(new FileChange("f.txt", FileChangeKind.Modified), staged: false);
+        var diff = await _repo.GetWorkingDiffAsync(new FileChange("f.txt", FileChangeKind.Modified), staged: false, cancellationToken: TestContext.Current.CancellationToken);
         var secondHunk = diff.Select((l, i) => (l, i)).Where(x => x.l.IsHunk).Select(x => x.i).Last();
 
-        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, PatchBuilder.ChangesInHunk(diff, secondHunk), reverse: true)!, cached: false, reverse: true);
+        await _repo.ApplyPatchAsync(PatchBuilder.Build(diff, PatchBuilder.ChangesInHunk(diff, secondHunk), reverse: true)!, cached: false, reverse: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(TwentyLines.Replace("line 2\n", "line 2 changed\n"), await ReadAsync("f.txt"));
     }
@@ -114,15 +114,15 @@ public sealed class GitOperationsTests : IAsyncLifetime
         await WriteAsync("new.txt", "new\n");
         await WriteAsync("dir/other.txt", "other\n");
 
-        await _repo.DiscardAsync(new FileChange("f.txt", FileChangeKind.Modified));
+        await _repo.DiscardAsync(new FileChange("f.txt", FileChangeKind.Modified), TestContext.Current.CancellationToken);
         Assert.Equal(TwentyLines, await ReadAsync("f.txt"));
 
-        await _repo.DiscardAsync(new FileChange("new.txt", FileChangeKind.Untracked));
+        await _repo.DiscardAsync(new FileChange("new.txt", FileChangeKind.Untracked), TestContext.Current.CancellationToken);
         Assert.False(File.Exists(Path.Combine(_dir, "new.txt")));
 
         await WriteAsync("f.txt", "changed again\n");
-        await _repo.DiscardAllAsync();
-        var status = await _repo.GetStatusAsync();
+        await _repo.DiscardAllAsync(TestContext.Current.CancellationToken);
+        var status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Empty(status.Unstaged);
         Assert.Equal(TwentyLines, await ReadAsync("f.txt"));
     }
@@ -131,10 +131,10 @@ public sealed class GitOperationsTests : IAsyncLifetime
     public async Task DiscardKeepsStagedChanges()
     {
         await WriteAsync("f.txt", "staged\n");
-        await _repo.StageAllAsync();
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
         await WriteAsync("f.txt", "staged\nand unstaged\n");
 
-        await _repo.DiscardAsync(new FileChange("f.txt", FileChangeKind.Modified));
+        await _repo.DiscardAsync(new FileChange("f.txt", FileChangeKind.Modified), TestContext.Current.CancellationToken);
 
         Assert.Equal("staged\n", await ReadAsync("f.txt"));
     }
@@ -144,46 +144,46 @@ public sealed class GitOperationsTests : IAsyncLifetime
     [Fact]
     public async Task CreateRenameDeleteBranch()
     {
-        var first = (await _repo.GetCommitsAsync()).Single();
+        var first = (await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single();
         await CommitFileAsync("g.txt", "g\n", "Second");
 
-        await _repo.CreateBranchAsync("old-name", first.Sha, checkout: false);
-        await _repo.RenameBranchAsync("old-name", "new-name");
-        var branches = await _repo.GetBranchesAsync();
+        await _repo.CreateBranchAsync("old-name", first.Sha, checkout: false, cancellationToken: TestContext.Current.CancellationToken);
+        await _repo.RenameBranchAsync("old-name", "new-name", TestContext.Current.CancellationToken);
+        var branches = await _repo.GetBranchesAsync(TestContext.Current.CancellationToken);
         Assert.Equal(first.Sha, branches.Single(b => b.Name == "new-name").Sha);
         Assert.DoesNotContain(branches, b => b.Name == "old-name");
 
-        await _repo.DeleteBranchAsync("new-name");
-        Assert.DoesNotContain(await _repo.GetBranchesAsync(), b => b.Name == "new-name");
+        await _repo.DeleteBranchAsync("new-name", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(await _repo.GetBranchesAsync(TestContext.Current.CancellationToken), b => b.Name == "new-name");
     }
 
     [Fact]
     public async Task DeleteUnmergedBranch_RequiresForce()
     {
-        await _repo.CreateBranchAsync("wip");
+        await _repo.CreateBranchAsync("wip", cancellationToken: TestContext.Current.CancellationToken);
         await CommitFileAsync("wip.txt", "wip\n", "Unmerged work");
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "main"));
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "main"), TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<GitException>(() => _repo.DeleteBranchAsync("wip"));
-        await _repo.DeleteBranchAsync("wip", force: true);
-        Assert.DoesNotContain(await _repo.GetBranchesAsync(), b => b.Name == "wip");
+        await Assert.ThrowsAsync<GitException>(() => _repo.DeleteBranchAsync("wip", cancellationToken: TestContext.Current.CancellationToken));
+        await _repo.DeleteBranchAsync("wip", force: true, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(await _repo.GetBranchesAsync(TestContext.Current.CancellationToken), b => b.Name == "wip");
     }
 
     [Fact]
     public async Task MergeAndRebase()
     {
-        await _repo.CreateBranchAsync("feature");
+        await _repo.CreateBranchAsync("feature", cancellationToken: TestContext.Current.CancellationToken);
         await CommitFileAsync("feature.txt", "f\n", "Feature");
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "main"));
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "main"), TestContext.Current.CancellationToken);
         await CommitFileAsync("main.txt", "m\n", "Main work");
 
         // Rebase feature onto main, then merge (fast-forward) into main.
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "feature"));
-        await _repo.RebaseAsync("main");
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "feature"), TestContext.Current.CancellationToken);
+        await _repo.RebaseAsync("main", TestContext.Current.CancellationToken);
         Assert.Equal(["Feature", "Main work", "Initial"], (await LogAsync("feature")));
 
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "main"));
-        await _repo.MergeAsync("feature");
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "main"), TestContext.Current.CancellationToken);
+        await _repo.MergeAsync("feature", TestContext.Current.CancellationToken);
         Assert.Equal(["Feature", "Main work", "Initial"], (await LogAsync("main")));
     }
 
@@ -192,30 +192,30 @@ public sealed class GitOperationsTests : IAsyncLifetime
     {
         await CreateConflictAsync();
 
-        await Assert.ThrowsAsync<GitException>(() => _repo.MergeAsync("other"));
+        await Assert.ThrowsAsync<GitException>(() => _repo.MergeAsync("other", TestContext.Current.CancellationToken));
 
-        Assert.Equal(RepositoryOperation.Merging, await _repo.GetOperationAsync());
-        Assert.Contains("Merge branch 'other'", await _repo.GetMergeMessageAsync());
-        Assert.Contains((await _repo.GetStatusAsync()).Unstaged, c => c.Kind == FileChangeKind.Conflicted);
+        Assert.Equal(RepositoryOperation.Merging, await _repo.GetOperationAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Merge branch 'other'", await _repo.GetMergeMessageAsync(TestContext.Current.CancellationToken));
+        Assert.Contains((await _repo.GetStatusAsync(TestContext.Current.CancellationToken)).Unstaged, c => c.Kind == FileChangeKind.Conflicted);
 
-        await _repo.AbortOperationAsync(RepositoryOperation.Merging);
-        Assert.Equal(RepositoryOperation.None, await _repo.GetOperationAsync());
+        await _repo.AbortOperationAsync(RepositoryOperation.Merging, TestContext.Current.CancellationToken);
+        Assert.Equal(RepositoryOperation.None, await _repo.GetOperationAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task RebaseConflict_ResolveAndContinue_WithoutEditor()
     {
         await CreateConflictAsync();
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "other"));
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "other"), TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<GitException>(() => _repo.RebaseAsync("main"));
-        Assert.Equal(RepositoryOperation.Rebasing, await _repo.GetOperationAsync());
+        await Assert.ThrowsAsync<GitException>(() => _repo.RebaseAsync("main", TestContext.Current.CancellationToken));
+        Assert.Equal(RepositoryOperation.Rebasing, await _repo.GetOperationAsync(TestContext.Current.CancellationToken));
 
         await WriteAsync("f.txt", "resolved\n");
-        await _repo.StageAllAsync();
-        await _repo.ContinueOperationAsync(RepositoryOperation.Rebasing);
+        await _repo.StageAllAsync(TestContext.Current.CancellationToken);
+        await _repo.ContinueOperationAsync(RepositoryOperation.Rebasing, TestContext.Current.CancellationToken);
 
-        Assert.Equal(RepositoryOperation.None, await _repo.GetOperationAsync());
+        Assert.Equal(RepositoryOperation.None, await _repo.GetOperationAsync(TestContext.Current.CancellationToken));
         Assert.Equal(["Other change", "Main change", "Initial"], await LogAsync("other"));
     }
 
@@ -224,21 +224,21 @@ public sealed class GitOperationsTests : IAsyncLifetime
     [Fact]
     public async Task CherryPickRevertAndTag()
     {
-        await _repo.CreateBranchAsync("feature");
+        await _repo.CreateBranchAsync("feature", cancellationToken: TestContext.Current.CancellationToken);
         await CommitFileAsync("picked.txt", "p\n", "To be picked");
-        var picked = (await _repo.GetCommitsAsync())[0];
-        await _repo.CheckoutAsync((await _repo.GetBranchesAsync()).Single(b => b.Name == "main"));
+        var picked = (await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken))[0];
+        await _repo.CheckoutAsync((await _repo.GetBranchesAsync(TestContext.Current.CancellationToken)).Single(b => b.Name == "main"), TestContext.Current.CancellationToken);
 
-        await _repo.CherryPickAsync(picked);
+        await _repo.CherryPickAsync(picked, TestContext.Current.CancellationToken);
         Assert.True(File.Exists(Path.Combine(_dir, "picked.txt")));
 
-        var head = (await _repo.GetCommitsAsync()).First(c => c.Refs.Any(r => r is { Name: "main", IsCurrent: true }));
-        await _repo.RevertAsync(head);
+        var head = (await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).First(c => c.Refs.Any(r => r is { Name: "main", IsCurrent: true }));
+        await _repo.RevertAsync(head, TestContext.Current.CancellationToken);
         Assert.False(File.Exists(Path.Combine(_dir, "picked.txt")));
         Assert.StartsWith("Revert", (await LogAsync("main"))[0]);
 
-        await _repo.CreateTagAsync("v1.0", head.Sha);
-        Assert.Contains((await _repo.GetCommitsAsync()).Single(c => c.Sha == head.Sha).Refs, r => r is { Name: "v1.0", Kind: GitRefKind.Tag });
+        await _repo.CreateTagAsync("v1.0", head.Sha, TestContext.Current.CancellationToken);
+        Assert.Contains((await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single(c => c.Sha == head.Sha).Refs, r => r is { Name: "v1.0", Kind: GitRefKind.Tag });
     }
 
     [Theory]
@@ -247,12 +247,12 @@ public sealed class GitOperationsTests : IAsyncLifetime
     [InlineData(ResetMode.Hard)]
     public async Task Reset_MovesBranch(ResetMode mode)
     {
-        var initial = (await _repo.GetCommitsAsync()).Single();
+        var initial = (await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single();
         await CommitFileAsync("g.txt", "g\n", "Second");
 
-        await _repo.ResetAsync(initial.Sha, mode);
+        await _repo.ResetAsync(initial.Sha, mode, TestContext.Current.CancellationToken);
 
-        var status = await _repo.GetStatusAsync();
+        var status = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal(["Initial"], await LogAsync("main"));
         switch (mode)
         {
@@ -271,28 +271,28 @@ public sealed class GitOperationsTests : IAsyncLifetime
     [Fact]
     public async Task CheckoutCommit_DetachesHead()
     {
-        var initial = (await _repo.GetCommitsAsync()).Single();
+        var initial = (await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single();
         await CommitFileAsync("g.txt", "g\n", "Second");
 
-        await _repo.CheckoutCommitAsync(initial.Sha);
+        await _repo.CheckoutCommitAsync(initial.Sha, TestContext.Current.CancellationToken);
 
-        Assert.True((await _repo.GetStatusAsync()).IsDetached);
+        Assert.True((await _repo.GetStatusAsync(TestContext.Current.CancellationToken)).IsDetached);
     }
 
     [Fact]
     public async Task DeleteRemoteBranch()
     {
         var remoteDir = _dir + "-remote.git";
-        await _git.RunAsync(Path.GetTempPath(), ["init", "--bare", "-b", "main", remoteDir]);
+        await _git.RunAsync(Path.GetTempPath(), ["init", "--bare", "-b", "main", remoteDir], cancellationToken: TestContext.Current.CancellationToken);
         await Git("remote", "add", "origin", remoteDir);
-        await _repo.PushAsync();
-        await _repo.CreateBranchAsync("to-delete");
-        await _repo.PushAsync();
-        Assert.Contains(await _repo.GetBranchesAsync(), b => b.Name == "origin/to-delete");
+        await _repo.PushAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _repo.CreateBranchAsync("to-delete", cancellationToken: TestContext.Current.CancellationToken);
+        await _repo.PushAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(await _repo.GetBranchesAsync(TestContext.Current.CancellationToken), b => b.Name == "origin/to-delete");
 
-        await _repo.DeleteRemoteBranchAsync("origin/to-delete");
+        await _repo.DeleteRemoteBranchAsync("origin/to-delete", TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(await _repo.GetBranchesAsync(), b => b.Name == "origin/to-delete");
+        Assert.DoesNotContain(await _repo.GetBranchesAsync(TestContext.Current.CancellationToken), b => b.Name == "origin/to-delete");
     }
 
     // ---------- Helpers ----------
