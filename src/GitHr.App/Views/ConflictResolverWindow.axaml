@@ -1,0 +1,133 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GitHr.App.ViewModels"
+        xmlns:conflicts="using:GitHr.Core.Conflicts"
+        x:Class="GitHr.App.Views.ConflictResolverWindow"
+        x:DataType="vm:ConflictResolverViewModel"
+        Title="{Binding Path, StringFormat='Resolve conflicts — {0}'}"
+        Width="1180" Height="820" MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Window.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource PanelBackground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource SubtleBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style Selector="Border.side">
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="{StaticResource AppBackground}" />
+        </Style>
+        <Style Selector="Border.side.ours">
+            <Setter Property="BorderBrush" Value="#16A9E0" />
+        </Style>
+        <Style Selector="Border.side.theirs">
+            <Setter Property="BorderBrush" Value="#A66BDB" />
+        </Style>
+        <Style Selector="TextBlock.status">
+            <Setter Property="Foreground" Value="#E0A83D" />
+        </Style>
+        <Style Selector="TextBlock.status.ok">
+            <Setter Property="Foreground" Value="#3DC47E" />
+        </Style>
+        <Style Selector="TextBlock.code, SelectableTextBlock.code">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+        <!-- Header: file, what "ours"/"theirs" mean here, bulk choices -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBackground}" Padding="16,10"
+                BorderBrush="{StaticResource SubtleBorder}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Path}" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SidesHint}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="small" Content="Use ours for all" Command="{Binding ChooseAllCommand}"
+                            CommandParameter="{x:Static conflicts:ConflictChoice.Ours}" />
+                    <Button Classes="small" Content="Use theirs for all" Command="{Binding ChooseAllCommand}"
+                            CommandParameter="{x:Static conflicts:ConflictChoice.Theirs}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Footer: validation + save -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource ToolbarBackground}" Padding="16,10"
+                BorderBrush="{StaticResource SubtleBorder}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="StatusLabel" Classes="status" Text="{Binding StatusText}" VerticalAlignment="Center"
+                           Classes.ok="{Binding IsResultValid}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" MinWidth="90" HorizontalContentAlignment="Center" IsCancel="True" Click="Cancel_Click" />
+                    <Button x:Name="SaveButton" Classes="accent" Content="Save &amp; mark resolved" IsEnabled="{Binding CanSave}"
+                            Click="Save_Click" ToolTip.Tip="Write the result to the file and stage it as resolved" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid RowDefinitions="*,5,260">
+            <!-- One card per conflict: context, ours | theirs, choices -->
+            <ScrollViewer Padding="16,12">
+                <ItemsControl ItemsSource="{Binding Blocks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ConflictBlockViewModel">
+                            <Border Classes="card">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding Header}" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ChoiceText}" Classes="muted" FontSize="12" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ContextBefore}" Classes="code muted" IsVisible="{Binding HasContext}" />
+                                    <Grid ColumnDefinitions="*,12,*">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="{Binding $parent[Window].((vm:ConflictResolverViewModel)DataContext).OursTitle}"
+                                                       Foreground="#16A9E0" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <Border Classes="side ours">
+                                                <SelectableTextBlock Text="{Binding OursText}" Classes="code" TextWrapping="Wrap" />
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Spacing="4">
+                                            <TextBlock Text="{Binding $parent[Window].((vm:ConflictResolverViewModel)DataContext).TheirsTitle}"
+                                                       Foreground="#A66BDB" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <Border Classes="side theirs">
+                                                <SelectableTextBlock Text="{Binding TheirsText}" Classes="code" TextWrapping="Wrap" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Classes="small" Classes.accent="{Binding IsOurs}" Content="Use ours"
+                                                Command="{Binding ChooseCommand}" CommandParameter="{x:Static conflicts:ConflictChoice.Ours}" />
+                                        <Button Classes="small" Classes.accent="{Binding IsTheirs}" Content="Use theirs"
+                                                Command="{Binding ChooseCommand}" CommandParameter="{x:Static conflicts:ConflictChoice.Theirs}" />
+                                        <Button Classes="small" Classes.accent="{Binding IsOursThenTheirs}" Content="Both: ours, then theirs"
+                                                Command="{Binding ChooseCommand}" CommandParameter="{x:Static conflicts:ConflictChoice.OursThenTheirs}" />
+                                        <Button Classes="small" Classes.accent="{Binding IsTheirsThenOurs}" Content="Both: theirs, then ours"
+                                                Command="{Binding ChooseCommand}" CommandParameter="{x:Static conflicts:ConflictChoice.TheirsThenOurs}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <GridSplitter Grid.Row="1" ResizeDirection="Rows" />
+
+            <!-- Editable result -->
+            <DockPanel Grid.Row="2" Background="{StaticResource PanelBackground}">
+                <TextBlock DockPanel.Dock="Top" Classes="section" Margin="16,8,16,4"
+                           Text="RESULT — updated from your choices; you can also edit it directly" />
+                <TextBox x:Name="ResultBox" Text="{Binding ResultText}" AcceptsReturn="True" AcceptsTab="True"
+                         FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="16,0,16,12"
+                         VerticalContentAlignment="Top" TextWrapping="NoWrap" />
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

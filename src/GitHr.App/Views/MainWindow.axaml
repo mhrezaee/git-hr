@@ -101,10 +101,12 @@
 
         <!-- ================= Merge / rebase / cherry-pick in progress ================= -->
         <Border DockPanel.Dock="Top" Background="#4A3B1C" Padding="12,6" IsVisible="{Binding HasOperation}">
-            <Grid ColumnDefinitions="*,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                 <TextBlock Text="{Binding OperationHint}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Classes="small accent" Content="Continue" Command="{Binding ContinueOperationCommand}" Margin="8,0,0,0" />
-                <Button Grid.Column="2" Classes="small danger" Content="Abort" Command="{Binding AbortOperationCommand}" Margin="8,0,0,0" />
+                <Button Grid.Column="1" Classes="small" Content="Resolve…" Command="{Binding ResolveNextConflictCommand}" Margin="8,0,0,0"
+                        IsVisible="{Binding HasConflictedFiles}" ToolTip.Tip="Open the conflict resolver for the next conflicted file" />
+                <Button Grid.Column="2" Classes="small accent" Content="Continue" Command="{Binding ContinueOperationCommand}" Margin="8,0,0,0" />
+                <Button Grid.Column="3" Classes="small danger" Content="Abort" Command="{Binding AbortOperationCommand}" Margin="8,0,0,0" />
             </Grid>
         </Border>
 
@@ -429,6 +431,15 @@
                                                 <ContextMenu>
                                                     <MenuItem Header="Stage" Command="{Binding Owner.StageFileCommand}" CommandParameter="{Binding}" />
                                                     <MenuItem Header="Discard changes…" Command="{Binding Owner.DiscardFileCommand}" CommandParameter="{Binding}" />
+                                                    <Separator IsVisible="{Binding IsConflicted}" />
+                                                    <MenuItem Header="Resolve conflicts…" IsVisible="{Binding IsConflicted}"
+                                                              Command="{Binding Owner.ResolveConflictCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Take ours (whole file)" IsVisible="{Binding IsConflicted}"
+                                                              Command="{Binding Owner.TakeOursCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Take theirs (whole file)" IsVisible="{Binding IsConflicted}"
+                                                              Command="{Binding Owner.TakeTheirsCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Mark as resolved" IsVisible="{Binding IsConflicted}"
+                                                              Command="{Binding Owner.MarkResolvedCommand}" CommandParameter="{Binding}" />
                                                 </ContextMenu>
                                             </Grid.ContextMenu>
                                         </Grid>

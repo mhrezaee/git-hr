@@ -52,6 +52,7 @@ public sealed class FileChangeItemViewModel(FileChange change, MainViewModel own
     public string Directory => System.IO.Path.GetDirectoryName(Change.Path)?.Replace('\\', '/') ?? "";
     public FileChangeKind Kind => Change.Kind;
     public bool IsUntracked => Change.Kind == FileChangeKind.Untracked;
+    public bool IsConflicted => Change.Kind == FileChangeKind.Conflicted;
 
     public string KindLetter => Change.Kind switch
     {

@@ -235,6 +235,11 @@ public partial class MainViewModel : ViewModelBase
     {
         if (HasRepository)
         {
+            if (HasConflictedFiles)
+            {
+                yield return new PaletteItem("Resolve next conflict…", "Conflict", () => ResolveNextConflictCommand.ExecuteAsync(null),
+                    Detail: $"{UnstagedFiles.Count(f => f.IsConflicted)} conflicted file(s)");
+            }
             if (HasOperation)
             {
                 yield return new PaletteItem($"Continue {OperationName}", "Conflict", () => ContinueOperationCommand.ExecuteAsync(null));
@@ -581,6 +586,7 @@ public partial class MainViewModel : ViewModelBase
         var (selectedPath, wasStaged) = SelectedStagedFile is { } s ? (s.Path, true) : (SelectedUnstagedFile?.Path, false);
         Replace(UnstagedFiles, status.Unstaged.Select(c => new FileChangeItemViewModel(c, this)));
         Replace(StagedFiles, status.Staged.Select(c => new FileChangeItemViewModel(c, this)));
+        NotifyConflictsChanged();
         var sameList = wasStaged ? StagedFiles : UnstagedFiles;
         var otherList = wasStaged ? UnstagedFiles : StagedFiles;
         var follow = sameList.FirstOrDefault(f => f.Path == selectedPath) ?? otherList.FirstOrDefault(f => f.Path == selectedPath);

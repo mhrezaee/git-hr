@@ -1,3 +1,4 @@
+using GitHr.Core.Conflicts;
 using GitHr.Core.Parsing;
 
 namespace GitHr.Core;
@@ -343,6 +344,69 @@ public sealed class GitRepository
         RepositoryOperation.Reverting => "revert",
         _ => throw new GitException("No merge, rebase, cherry-pick or revert is in progress."),
     };
+
+    // ---------- Conflict resolution ----------
+
+    /// <summary>Which versions of a conflicted path exist, and its working-tree content with markers.</summary>
+    public async Task<ConflictInfo> GetConflictAsync(string path, CancellationToken cancellationToken = default)
+    {
+        // "mode sha stage<TAB>path" per unmerged index entry; stages 1 = base, 2 = ours, 3 = theirs.
+        var result = await RunAsync(["ls-files", "-u", "-z", "--", path], cancellationToken);
+        var stages = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Select(entry => entry.Split('\t', 2)[0].Split(' '))
+            .Where(fields => fields.Length == 3)
+            .Select(fields => fields[2])
+            .ToHashSet();
+
+        var fullPath = System.IO.Path.Combine(Root, path);
+        string? text = null;
+        var binary = false;
+        if (File.Exists(fullPath))
+        {
+            var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+            // Same heuristic as git: a NUL byte in the first 8000 bytes means binary.
+            binary = bytes.AsSpan(0, Math.Min(bytes.Length, 8000)).Contains((byte)0);
+            if (!binary)
+            {
+                text = System.Text.Encoding.UTF8.GetString(HasUtf8Bom(bytes) ? bytes.AsSpan(3) : bytes);
+            }
+        }
+        return new ConflictInfo(path, stages.Contains("1"), stages.Contains("2"), stages.Contains("3"), text, binary);
+    }
+
+    /// <summary>Writes the resolved content (keeping a UTF-8 BOM if the file had one) and marks the path resolved.</summary>
+    public async Task ResolveWithContentAsync(string path, string content, CancellationToken cancellationToken = default)
+    {
+        var fullPath = System.IO.Path.Combine(Root, path);
+        // A BOM is either before everything (conflict further down) or, when the conflict starts at line 1, inside the
+        // chosen side's first line — i.e. at the start of the resolved text. Keep it in both cases, exactly once.
+        var hadBom = File.Exists(fullPath) && HasUtf8Bom(await File.ReadAllBytesAsync(fullPath, cancellationToken));
+        var withBom = hadBom || content.StartsWith('﻿');
+        await File.WriteAllTextAsync(fullPath, content.TrimStart('﻿'), new System.Text.UTF8Encoding(withBom), cancellationToken);
+        await MarkResolvedAsync(path, cancellationToken);
+    }
+
+    /// <summary>Resolves the whole file with one side's version; if that side deleted the file, deletes it.</summary>
+    public async Task TakeSideAsync(string path, ConflictSide side, CancellationToken cancellationToken = default)
+    {
+        var conflict = await GetConflictAsync(path, cancellationToken);
+        var sideHasFile = side == ConflictSide.Ours ? conflict.HasOurs : conflict.HasTheirs;
+        if (sideHasFile)
+        {
+            await RunAsync(["checkout", side == ConflictSide.Ours ? "--ours" : "--theirs", "--", path], cancellationToken);
+            await MarkResolvedAsync(path, cancellationToken);
+        }
+        else
+        {
+            await RunAsync(["rm", "-q", "--", path], cancellationToken);
+        }
+    }
+
+    /// <summary>Stages the path as it is in the working tree (after editing it elsewhere), including deletions.</summary>
+    public Task MarkResolvedAsync(string path, CancellationToken cancellationToken = default) =>
+        RunAsync(["add", "-A", "--", path], cancellationToken);
+
+    private static bool HasUtf8Bom(ReadOnlySpan<byte> bytes) => bytes is [0xEF, 0xBB, 0xBF, ..];
 
     // ---------- Partial staging & discarding ----------
 

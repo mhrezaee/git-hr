@@ -3,8 +3,8 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
-![Tests](https://img.shields.io/badge/tests-95%20passing-2EA44F)
-![Core coverage](https://img.shields.io/badge/core%20coverage-91.5%25%20lines-2EA44F)
+![Tests](https://img.shields.io/badge/tests-118%20passing-2EA44F)
+![Core coverage](https://img.shields.io/badge/core%20coverage-92.6%25%20lines-2EA44F)
 ![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -56,8 +56,12 @@ Windows first; macOS and Linux run from the same code. No accounts, no paywall, 
 - **Force push with lease** after amending or rebasing — refuses to overwrite commits someone else pushed
 
 ### Conflicts
-- When a merge, rebase, cherry-pick or revert stops on conflicts, a banner offers **Continue** and **Abort**
-- Conflicted files are marked `!` and the merge message is pre-filled
+- When a merge, rebase, cherry-pick or revert stops on conflicts, a banner offers **Resolve…**, **Continue** and **Abort**
+- **Conflict resolver**: double-click a conflicted file (`!`) to see every conflict with *ours* and *theirs* side by side and a few lines of context; choose ours, theirs or both (in either order) per conflict or for all, and edit the live result directly
+- Sides are labelled with what they mean for the current operation — including the rebase case, where "ours" and "theirs" are swapped
+- Save is only possible once no conflict markers are left; manual edits are never overwritten without asking
+- Whole-file choices from the right-click menu (take ours / take theirs / mark as resolved), which also handle binary files and delete-vs-modify conflicts
+- Line endings and UTF-8 BOMs are preserved; git's `diff3` conflict style (with the common ancestor) is understood
 
 ### Productivity
 - **Command palette** (`Ctrl+P`): fuzzy search over all commands, check out any branch, open recent repositories, or type a new name to create a branch
@@ -88,6 +92,7 @@ flowchart TB
         Graph["CommitGraph<br/>lane layout"]
         Patch["PatchBuilder<br/>partial hunk / line patches"]
         Url["GitUrl"]
+        Conf["ConflictDocument<br/>conflict markers → blocks → result"]
         Repo --> Runner
         Repo --> Parser
     end
@@ -104,6 +109,7 @@ flowchart TB
     VMs --> Graph
     VMs --> Patch
     VMs --> Url
+    VMs --> Conf
     Runner -- "child process" --> Git
     Git --> GCM
     Git --> SSH
@@ -118,7 +124,7 @@ flowchart TB
 | **ViewModels** | UI state, commands, confirmation rules, busy/progress/cancel handling, selection | Start processes or parse Git output |
 | **Core: `GitRepository`** | One method per Git operation, typed results, error translation (`GitException`) | Know about windows, threads or dialogs |
 | **Core: `GitRunner`** | Run `git` safely: argument lists (no shell quoting), UTF-8, no terminal prompts, streamed progress, kill on cancel | Interpret results |
-| **Core: pure algorithms** | `GitOutputParser`, `CommitGraph`, `PatchBuilder`, `GitUrl` — deterministic functions over text | Perform I/O |
+| **Core: pure algorithms** | `GitOutputParser`, `CommitGraph`, `PatchBuilder`, `ConflictDocument`, `GitUrl` — deterministic functions over text | Perform I/O |
 
 ### Threading model
 
@@ -136,6 +142,7 @@ flowchart TB
 | **Drive the `git` CLI instead of a library (libgit2)** | 100% compatible with the user's git: credential helpers, SSH agents, hooks, LFS, `includeIf`, signing. Private repositories need no extra auth code. | Process start per command (milliseconds); output must be parsed |
 | **Machine-readable output only** (`status --porcelain=v2 -z`, custom `log --format` with control-character separators, `for-each-ref` formats) | Stable across git versions and user locales; file names with spaces or Unicode are safe | Parsers are hand-written — and therefore unit-tested |
 | **`GIT_TERMINAL_PROMPT=0`, `GIT_EDITOR=true`, stdin closed** | A GUI has no terminal: git must never block waiting for input or an editor. GUI credential helpers still show their sign-in windows. | Features that need an editor (interactive rebase) get their own UI |
+| **Conflicts resolved from the working-tree markers, then `git add`** | Works with every git conflict style (incl. `diff3`/`zdiff3`) and any merge strategy; the result is exactly what git expects, and editing the file elsewhere keeps working | Marker parsing must be robust — malformed markers are treated as text, and `ConflictDocument` has 98% line coverage |
 | **Partial staging via generated patches + `git apply --cached`** | Exactly the same result as command-line git; works for index and working tree, forward and reverse | Patch building needs care when removed/added lines interleave — covered by dedicated tests |
 | **Avalonia UI** | One codebase for Windows, macOS and Linux; Skia rendering looks identical everywhere; a real headless mode for UI tests | Smaller ecosystem than web UI stacks |
 | **MVVM with CommunityToolkit.Mvvm source generators** | Testable view models, no reflection-heavy frameworks, compile-time checked bindings | Some boilerplate in item view models (`Owner` references for context menus) |
@@ -217,6 +224,38 @@ stateDiagram-v2
     end note
 ```
 
+### Resolving a conflicted file
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Main as MainViewModel
+    participant Repo as GitRepository
+    participant Doc as ConflictDocument
+    participant Win as Conflict resolver
+    participant Git as git
+
+    User->>Main: double-click "!" file (or banner "Resolve…")
+    Main->>Repo: GetConflictAsync(path)
+    Repo->>Git: git ls-files -u (which of base / ours / theirs exist)
+    Repo-->>Main: ConflictInfo (text with markers, binary?, deleted side?)
+    alt binary or delete-vs-modify
+        Main-->>User: explain; offer Take ours / Take theirs
+    else text conflict
+        Main->>Doc: Parse(markers) → common text + conflict blocks
+        Main->>Win: show blocks, ours | theirs, live result
+        loop per conflict
+            User->>Win: Use ours / theirs / both
+            Win->>Doc: Render(choices) → result
+        end
+        User->>Win: Save & mark resolved (enabled only without markers)
+        Main->>Repo: ResolveWithContentAsync(path, result)
+        Repo->>Git: write file (same line endings / BOM), git add
+    end
+    User->>Main: Continue (banner)
+    Main->>Git: git merge/rebase/cherry-pick --continue
+```
+
 ### Stash lifecycle
 
 ```mermaid
@@ -243,15 +282,15 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**95 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 91.5% line and 83.3% branch coverage.**
+**118 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.6% line and 85.3% branch coverage.**
 
 The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
 ```mermaid
 flowchart TB
-    UI["UI tests · 23<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs"]
-    INT["Integration tests · 36<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging, stashes, tags)"]
-    UNIT["Unit tests · 36<br/>parsers (incl. stash list, tags) · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
+    UI["UI tests · 28<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs, conflict resolver"]
+    INT["Integration tests · 43<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging, stashes, tags, conflict resolution)"]
+    UNIT["Unit tests · 47<br/>parsers (incl. stash list, tags, conflict markers) · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
     UI --- INT --- UNIT
     style UI fill:#8B44AC,color:#fff
     style INT fill:#16A9E0,color:#fff
@@ -264,6 +303,7 @@ flowchart TB
 | Git integration tests | `tests/GitHr.Core.Tests` | Every repository operation end to end: staging hunks/lines, discard, branches, merge/rebase conflicts with continue/abort, cherry-pick, revert, reset, tags, clone with progress and cancel, fetch/pull/push, force-with-lease |
 | Headless UI tests | `tests/GitHr.App.Tests` | Clicking the real buttons and context menus, command palette keyboard flow, clone dialog behavior, amend, conflict banner — plus rendered frames saved for visual inspection |
 | View-model unit tests | `tests/GitHr.App.Tests` | Palette fuzzy scoring, progress percentage parsing, clipboard URL suggestion rules |
+| Conflict tests | both | Marker parsing and rendering (diff3 base sections, CRLF, missing final newline, malformed markers), BOM kept exactly once, delete-vs-modify conflicts, whole-side choices, the resolver window from double-click to `merge --continue` |
 | Stash & tag tests | both | Parsing `stash list` / tags (annotated tags peeled to their commit), stashed untracked files and their diffs, apply/pop/drop by index, pushing and deleting tags on a bare remote, sidebar menus and the stash tab |
 
 Test isolation:
@@ -319,7 +359,7 @@ Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the 
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test                                        # all 95 tests
+dotnet test                                        # all 118 tests
 dotnet test --project tests/GitHr.App.Tests        # one suite
 dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
 ```
@@ -348,11 +388,12 @@ GitHr/
 │   │   ├── Models.cs               # Commit, Branch, FileChange, DiffLine, RepositoryStatus, ...
 │   │   ├── PatchBuilder.cs         # partial hunk/line patches for git apply
 │   │   ├── GitUrl.cs               # repository name from a clone URL
+│   │   ├── Conflicts/              # ConflictDocument (marker parsing/rendering), ConflictInfo
 │   │   ├── Graph/CommitGraph.cs    # commit graph lane layout
 │   │   └── Parsing/GitOutputParser.cs
 │   └── GitHr.App/                  # Avalonia desktop app
-│       ├── Views/                  # MainWindow, CloneDialog, Dialogs
-│       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags partials), palette, clone dialog, items
+│       ├── Views/                  # MainWindow, CloneDialog, ConflictResolverWindow, Dialogs
+│       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags, Conflicts partials), palette, clone dialog, conflict resolver, items
 │       ├── Controls/CommitGraphCell.cs
 │       ├── AppSettings.cs          # recent repositories, clone folder (per-user app data)
 │       └── Converters.cs
@@ -366,7 +407,6 @@ GitHr/
 
 ## Roadmap
 
-- Merge conflict resolver (ours / theirs / result)
 - Interactive rebase (reorder, squash, reword, drop)
 - Side-by-side diff with syntax highlighting
 - Search and filtering in history, file history, blame

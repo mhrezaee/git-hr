@@ -46,6 +46,8 @@ public partial class MainWindow : Window
                 }
             };
             vm.RequestClone = async input => await new CloneDialog { DataContext = input }.ShowDialog<bool?>(this) == true;
+            vm.OpenConflictResolver = async resolver =>
+                await new ConflictResolverWindow { DataContext = resolver }.ShowDialog<bool?>(this) == true;
         }
     }
 
@@ -151,7 +153,10 @@ public partial class MainWindow : Window
     {
         if (sender is ListBox { SelectedItem: FileChangeItemViewModel file })
         {
-            await ViewModel.StageFileCommand.ExecuteAsync(file);
+            // Double-clicking a conflicted file opens the resolver; any other file is staged.
+            await (file.IsConflicted
+                ? ViewModel.ResolveConflictCommand.ExecuteAsync(file)
+                : ViewModel.StageFileCommand.ExecuteAsync(file));
         }
     }
 
