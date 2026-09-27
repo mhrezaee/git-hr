@@ -48,7 +48,10 @@ public sealed class GitRepositoryTests : IAsyncLifetime
 
         var repo = await GitRepository.OpenAsync(sub, _git, TestContext.Current.CancellationToken);
 
-        Assert.Equal(Path.GetFullPath(_dir), repo.Root, ignoreCase: true);
+        // Compare with what git reports for the root itself: on macOS the temp folder (/var/...) is a symlink
+        // to /private/var/..., and git always answers with the resolved path.
+        Assert.Equal(_repo.Root, repo.Root);
+        Assert.NotEqual(Path.GetFullPath(sub), repo.Root);
     }
 
     [Fact]

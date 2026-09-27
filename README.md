@@ -1,5 +1,6 @@
 # GitHr
 
+[![CI](https://github.com/mhrezaee/git-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/mhrezaee/git-hr/actions/workflows/ci.yml)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
@@ -16,6 +17,7 @@ Windows first; macOS and Linux run from the same code. No accounts, no paywall, 
 - [Design decisions](#design-decisions)
 - [Key flows](#key-flows)
 - [Testing strategy](#testing-strategy)
+- [Continuous integration](#continuous-integration)
 - [Security and privacy](#security-and-privacy)
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
@@ -342,6 +344,33 @@ flowchart LR
 
 ---
 
+## Continuous integration
+
+Every push and pull request to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the same build and all test suites on **Windows, Linux and macOS**, so the cross-platform claim is checked on every change, not assumed.
+
+```mermaid
+flowchart LR
+    Trigger["push / pull request<br/>to main"] --> Matrix{"matrix<br/>fail-fast off"}
+    Matrix --> Win["Windows"]
+    Matrix --> Lin["Linux<br/>+ code coverage"]
+    Matrix --> Mac["macOS"]
+    Win --> Steps
+    Lin --> Steps
+    Mac --> Steps
+    subgraph Steps["each platform"]
+        direction TB
+        S1["restore + build (Release)"] --> S2["Core tests<br/>unit + integration, real git"]
+        S2 --> S3["App tests<br/>headless UI, Skia rendering"]
+        S3 --> S4["run summary<br/>results + coverage"]
+        S3 --> S5["artifacts<br/>HTML reports · UI screenshots · coverage XML"]
+    end
+```
+
+- **Fail-fast is off**, so one broken platform never hides the results of the others.
+- **Artifacts per platform** (`test-results-Windows`, `-Linux`, `-macOS`): HTML test reports, the Cobertura coverage file (Linux), and the **screenshots the UI tests render** — a quick way to see how GitHr looks on each OS.
+- **Run summary**: each job appends its test counts (and Linux its coverage) to the run's summary page via `.github/scripts/test-summary.sh`, written in plain POSIX shell so it runs on every runner.
+- Superseded runs on the same branch are cancelled (`concurrency`), and the workflow only has read access to the repository.
+
 ## Security and privacy
 
 - **No telemetry, no accounts, no network calls of its own.** GitHr only talks to the remotes you configure, through git.
@@ -400,6 +429,9 @@ GitHr/
 ├── tests/
 │   ├── GitHr.Core.Tests/           # unit + integration tests against real repositories (xUnit v4)
 │   └── GitHr.App.Tests/            # headless UI tests (xUnit v4 + HeadlessUnitTestSession)
+├── .github/
+│   ├── workflows/ci.yml            # build + all tests on Windows, Linux, macOS
+│   └── scripts/test-summary.sh     # run summary: test reports + coverage
 └── global.json                     # opts `dotnet test` into Microsoft.Testing.Platform
 ```
 
@@ -412,7 +444,7 @@ GitHr/
 - Search and filtering in history, file history, blame
 - GitHub / Azure DevOps pull requests
 - Multiple repository tabs, settings, light theme
-- CI (GitHub Actions on Windows, macOS, Linux) and packaging: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
+- Packaging and releases from CI: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
 
 ## License
 

@@ -35,7 +35,10 @@ public sealed class CloneAndAmendTests : UiTestBase
         Click(window, Find<Button>(window, b => b.IsEffectivelyVisible && ReferenceEquals(b.Command, vm.CloneCommand)));
 
         var expectedName = Path.GetFileName(Dir);
-        await WaitUntilAsync(() => !vm.IsBusy && vm.RepositoryPath is { } p && p.StartsWith(clonesFolder, StringComparison.OrdinalIgnoreCase));
+        // Match the end of the path only: git reports resolved paths (on macOS /var/... is really /private/var/...).
+        var cloneSuffix = Path.Combine(Path.GetFileName(clonesFolder), expectedName);
+        await WaitUntilAsync(() => !vm.IsBusy && vm.RepositoryPath is { } p &&
+            Path.GetFullPath(p).EndsWith(cloneSuffix, StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(expectedName, shown!.FolderName); // derived from the URL
         Assert.Equal(expectedName, vm.RepositoryName);

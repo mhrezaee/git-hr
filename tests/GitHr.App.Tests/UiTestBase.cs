@@ -99,7 +99,7 @@ public abstract class UiTestBase : IDisposable
 
     protected static async Task WaitUntilAsync(Func<bool> condition, string? because = null)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(15);
+        var deadline = DateTime.UtcNow.AddSeconds(30); // generous: shared CI runners are much slower than a dev machine
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < deadline, because ?? "Timed out waiting for condition.");
@@ -150,7 +150,10 @@ public abstract class UiTestBase : IDisposable
     protected static void SaveFrame(Window window, string name)
     {
         var frame = window.CaptureRenderedFrame();
-        using var stream = File.Create(Path.Combine(Path.GetTempPath(), name));
+        // CI sets GITHR_TEST_ARTIFACTS so the screenshots of every OS can be uploaded; locally they go to %TEMP%.
+        var folder = Environment.GetEnvironmentVariable("GITHR_TEST_ARTIFACTS") is { Length: > 0 } dir ? dir : Path.GetTempPath();
+        Directory.CreateDirectory(folder);
+        using var stream = File.Create(Path.Combine(folder, name));
         frame?.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
     }
 }
