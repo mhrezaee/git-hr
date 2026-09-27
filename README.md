@@ -174,7 +174,7 @@ sequenceDiagram
     Git-->>Repo: exit 0
     VM->>Repo: reload status, branches, graph, operation (in parallel)
     Repo-->>VM: new state
-    VM-->>View: diff re-rendered; file follows to "Staged" if fully staged
+    VM-->>View: diff re-rendered, file follows to "Staged" if fully staged
 ```
 
 ### Cloning a private repository
@@ -240,7 +240,7 @@ sequenceDiagram
     Repo->>Git: git ls-files -u (which of base / ours / theirs exist)
     Repo-->>Main: ConflictInfo (text with markers, binary?, deleted side?)
     alt binary or delete-vs-modify
-        Main-->>User: explain; offer Take ours / Take theirs
+        Main-->>User: explain, offer Take ours / Take theirs
     else text conflict
         Main->>Doc: Parse(markers) → common text + conflict blocks
         Main->>Win: show blocks, ours | theirs, live result
