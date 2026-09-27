@@ -432,6 +432,7 @@ GitHr/
 ├── .github/
 │   ├── workflows/ci.yml            # build + all tests on Windows, Linux, macOS
 │   └── scripts/test-summary.sh     # run summary: test reports + coverage
+├── .gitattributes                  # line endings: LF in the repo, native on checkout, always LF for scripts
 └── global.json                     # opts `dotnet test` into Microsoft.Testing.Platform
 ```
 

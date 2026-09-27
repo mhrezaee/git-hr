@@ -1,0 +1,21 @@
+# Line endings: the repository stores LF; each checkout uses the platform's native line ending
+# (CRLF on Windows, LF on Linux/macOS). This works the same for everyone, independent of core.autocrlf.
+* text=auto
+
+# Shell scripts run on Linux/macOS CI runners (and Git Bash): CRLF would break them.
+*.sh text eol=lf
+
+# Source files: nicer diffs (function names in hunk headers).
+*.cs    text diff=csharp
+*.axaml text
+*.csproj text
+*.slnx  text
+*.json  text
+*.md    text diff=markdown
+*.yml   text
+
+# Binary assets: never touch line endings, never diff as text.
+*.ico binary
+*.png binary
+*.jpg binary
+*.gif binary
