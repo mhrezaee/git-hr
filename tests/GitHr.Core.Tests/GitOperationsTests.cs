@@ -237,7 +237,7 @@ public sealed class GitOperationsTests : IAsyncLifetime
         Assert.False(File.Exists(Path.Combine(_dir, "picked.txt")));
         Assert.StartsWith("Revert", (await LogAsync("main"))[0]);
 
-        await _repo.CreateTagAsync("v1.0", head.Sha, TestContext.Current.CancellationToken);
+        await _repo.CreateTagAsync("v1.0", head.Sha, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains((await _repo.GetCommitsAsync(cancellationToken: TestContext.Current.CancellationToken)).Single(c => c.Sha == head.Sha).Refs, r => r is { Name: "v1.0", Kind: GitRefKind.Tag });
     }
 

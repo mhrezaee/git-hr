@@ -128,7 +128,7 @@ public sealed class GitRepositoryTests : IAsyncLifetime
         var stashed = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Empty(stashed.Unstaged);
 
-        await _repo.StashPopAsync(TestContext.Current.CancellationToken);
+        await _repo.StashPopAsync(cancellationToken: TestContext.Current.CancellationToken);
         var restored = await _repo.GetStatusAsync(TestContext.Current.CancellationToken);
         Assert.Equal(["a.txt", "new.txt"], restored.Unstaged.Select(c => c.Path).Order());
     }

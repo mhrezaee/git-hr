@@ -23,6 +23,8 @@ public abstract class UiTestBase : IDisposable
     /// <summary>Answers for confirmation dialogs; tests can change it. Every question is recorded.</summary>
     protected bool ConfirmAnswer = true;
     protected string? PromptAnswer;
+    /// <summary>Answers for consecutive prompts (e.g. tag name, then message); falls back to <see cref="PromptAnswer"/>.</summary>
+    protected readonly Queue<string?> PromptAnswers = new();
     protected readonly List<string> Questions = [];
 
     /// <summary>Wraps a UI test body: <c>[Fact] public Task MyTest() => RunUi(async () => { ... });</c></summary>
@@ -78,7 +80,7 @@ public abstract class UiTestBase : IDisposable
         vm.Prompt = (title, _, _) =>
         {
             Questions.Add(title);
-            return Task.FromResult(PromptAnswer);
+            return Task.FromResult(PromptAnswers.Count > 0 ? PromptAnswers.Dequeue() : PromptAnswer);
         };
         Dispatcher.UIThread.RunJobs();
         return (window, vm);
@@ -135,6 +137,14 @@ public abstract class UiTestBase : IDisposable
         Assert.True(item.Command?.CanExecute(item.CommandParameter), $"'{header}' is not executable.");
         menu.Close();
         item.Command!.Execute(item.CommandParameter);
+    }
+
+    /// <summary>The visual row (item container content with a context menu) showing <paramref name="item"/>.</summary>
+    protected static Control RowOf(Window window, object item)
+    {
+        Dispatcher.UIThread.RunJobs(); // let freshly replaced lists realize their rows
+        return window.GetVisualDescendants().OfType<ListBoxItem>().First(i => ReferenceEquals(i.DataContext, item))
+            .GetVisualDescendants().OfType<Control>().First(c => c.ContextMenu is not null);
     }
 
     protected static void SaveFrame(Window window, string name)

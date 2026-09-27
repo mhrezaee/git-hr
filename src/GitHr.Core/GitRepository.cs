@@ -270,8 +270,9 @@ public sealed class GitRepository
         await RunAsync(["push", remote, "--delete", remoteBranch[(remote.Length + 1)..]], cancellationToken);
     }
 
-    public Task CreateTagAsync(string name, string target, CancellationToken cancellationToken = default) =>
-        RunAsync(["tag", name, target], cancellationToken);
+    /// <summary>Creates a lightweight tag, or an annotated one when <paramref name="message"/> is given.</summary>
+    public Task CreateTagAsync(string name, string target, string? message = null, CancellationToken cancellationToken = default) =>
+        RunAsync(message is null ? ["tag", name, target] : ["tag", "-a", name, "-m", message, target], cancellationToken);
 
     public Task CheckoutCommitAsync(string sha, CancellationToken cancellationToken = default) =>
         RunAsync(["switch", "--detach", sha], cancellationToken);
@@ -388,8 +389,88 @@ public sealed class GitRepository
     public Task StashAsync(string? message = null, CancellationToken cancellationToken = default) =>
         RunAsync(message is null ? ["stash", "push", "-u"] : ["stash", "push", "-u", "-m", message], cancellationToken);
 
-    public Task StashPopAsync(CancellationToken cancellationToken = default) =>
-        RunAsync(["stash", "pop"], cancellationToken);
+    public async Task<IReadOnlyList<Stash>> GetStashesAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["stash", "list", $"--format={GitOutputParser.StashFormat}"], cancellationToken);
+        return GitOutputParser.ParseStashes(result.Output);
+    }
+
+    /// <summary>Applies a stash and removes it from the list (default: the newest).</summary>
+    public Task StashPopAsync(int index = 0, CancellationToken cancellationToken = default) =>
+        RunAsync(["stash", "pop", StashRef(index)], cancellationToken);
+
+    /// <summary>Applies a stash and keeps it in the list.</summary>
+    public Task StashApplyAsync(int index, CancellationToken cancellationToken = default) =>
+        RunAsync(["stash", "apply", StashRef(index)], cancellationToken);
+
+    public Task StashDropAsync(int index, CancellationToken cancellationToken = default) =>
+        RunAsync(["stash", "drop", StashRef(index)], cancellationToken);
+
+    /// <summary>Files in a stash: tracked changes (vs. the commit it was made on) plus stashed untracked files.</summary>
+    public async Task<IReadOnlyList<FileChange>> GetStashChangesAsync(Stash stash, CancellationToken cancellationToken = default)
+    {
+        var tracked = await RunAsync(["diff-tree", "--no-commit-id", "-r", "-z", "-M", "--name-status", $"{stash.Sha}^1", stash.Sha], cancellationToken);
+        var changes = GitOutputParser.ParseNameStatus(tracked.Output).ToList();
+        if (await HasUntrackedPartAsync(stash, cancellationToken))
+        {
+            var untracked = await RunAsync(["ls-tree", "-r", "-z", "--name-only", $"{stash.Sha}^3"], cancellationToken);
+            changes.AddRange(untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                .Select(path => new FileChange(path, FileChangeKind.Untracked)));
+        }
+        return changes;
+    }
+
+    public async Task<IReadOnlyList<DiffLine>> GetStashDiffAsync(Stash stash, FileChange change, CancellationToken cancellationToken = default)
+    {
+        // Stashed untracked files live in the stash's third parent, a root commit containing just those files.
+        List<string> args = change.Kind == FileChangeKind.Untracked
+            ? ["show", "--format=", "--no-ext-diff", $"{stash.Sha}^3", "--", change.Path]
+            : ["diff", "--no-ext-diff", "-M", $"{stash.Sha}^1", stash.Sha, "--", .. change.OriginalPath is { } original ? [original] : Array.Empty<string>(), change.Path];
+        var result = await RunAsync(args, cancellationToken);
+        return GitOutputParser.ParseDiff(result.Output);
+    }
+
+    private async Task<bool> HasUntrackedPartAsync(Stash stash, CancellationToken cancellationToken) =>
+        (await _git.RunAsync(Root, ["rev-parse", "--verify", "-q", $"{stash.Sha}^3"], cancellationToken: cancellationToken)).Success;
+
+    private static string StashRef(int index) => $"stash@{{{index}}}";
+
+    // ---------- Tags ----------
+
+    /// <summary>All tags, newest first.</summary>
+    public async Task<IReadOnlyList<Tag>> GetTagsAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(
+            ["for-each-ref", "--sort=-creatordate", $"--format={GitOutputParser.TagFormat}", "refs/tags"], cancellationToken);
+        return GitOutputParser.ParseTags(result.Output);
+    }
+
+    public Task DeleteTagAsync(string name, CancellationToken cancellationToken = default) =>
+        RunAsync(["tag", "-d", name], cancellationToken);
+
+    /// <summary>Pushes one tag, or all tags when <paramref name="name"/> is null, to the default remote.</summary>
+    public async Task PushTagAsync(string? name, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var remote = await GetDefaultRemoteAsync(cancellationToken);
+        await RunAsync(name is null
+            ? ["push", "--progress", remote, "--tags"]
+            : ["push", "--progress", remote, $"refs/tags/{name}"], progress, cancellationToken);
+    }
+
+    public async Task DeleteRemoteTagAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var remote = await GetDefaultRemoteAsync(cancellationToken);
+        await RunAsync(["push", remote, "--delete", $"refs/tags/{name}"], cancellationToken);
+    }
+
+    /// <summary>"origin" if it exists, otherwise the only/first remote.</summary>
+    public async Task<string> GetDefaultRemoteAsync(CancellationToken cancellationToken = default)
+    {
+        var remotes = await GetRemotesAsync(cancellationToken);
+        return remotes.Length == 0
+            ? throw new GitException("This repository has no remote.")
+            : remotes.Contains("origin") ? "origin" : remotes[0];
+    }
 
     public Task FetchAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
         RunAsync(["fetch", "--all", "--prune", "--progress"], progress, cancellationToken);

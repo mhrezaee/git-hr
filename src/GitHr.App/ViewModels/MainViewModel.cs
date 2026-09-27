@@ -51,7 +51,7 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasRepository))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
         nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand),
-        nameof(ForcePushCommand))]
+        nameof(ForcePushCommand), nameof(StashWithMessageCommand), nameof(PushAllTagsCommand))]
     public partial string? RepositoryName { get; set; }
 
     public bool HasRepository => RepositoryName is not null;
@@ -68,7 +68,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(FetchCommand), nameof(PullCommand), nameof(PushCommand),
         nameof(StageAllCommand), nameof(UnstageAllCommand), nameof(CommitCommand), nameof(StashCommand), nameof(StashPopCommand), nameof(DiscardAllCommand),
-        nameof(CloneCommand), nameof(ForcePushCommand))]
+        nameof(CloneCommand), nameof(ForcePushCommand), nameof(StashWithMessageCommand), nameof(PushAllTagsCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -164,6 +164,9 @@ public partial class MainViewModel : ViewModelBase
         UnstagedFiles.Clear();
         StagedFiles.Clear();
         SelectedCommitFiles.Clear();
+        Stashes.Clear();
+        Tags.Clear();
+        SelectedStashFiles.Clear();
         UpdateOperation(RepositoryOperation.None, null);
         ClearDiff();
     }
@@ -258,6 +261,10 @@ public partial class MainViewModel : ViewModelBase
                 yield return new PaletteItem($"Checkout {branch.Name}", "Remote branch", () => CheckoutCommand.ExecuteAsync(branch),
                     Detail: "creates a local tracking branch");
             }
+            foreach (var item in StashAndTagPaletteItems())
+            {
+                yield return item;
+            }
         }
 
         if (PickRepository is { } pick)
@@ -292,7 +299,10 @@ public partial class MainViewModel : ViewModelBase
             ("Unstage all changes", "Changes", UnstageAllCommand, null),
             ("Discard all changes…", "Changes", DiscardAllCommand, null),
             ("Stash all changes", "Stash", StashCommand, null),
+            ("Stash with message…", "Stash", StashWithMessageCommand, null),
             ("Pop latest stash", "Stash", StashPopCommand, null),
+            ("Create tag at HEAD…", "Tag", CreateTagAtHeadCommand, null),
+            ("Push all tags", "Tag", PushAllTagsCommand, null),
             ("Refresh", "Repository", RefreshCommand, "F5"),
         ];
         return commands
@@ -539,6 +549,8 @@ public partial class MainViewModel : ViewModelBase
         var branchesTask = repository.GetBranchesAsync();
         var operationTask = repository.GetOperationAsync();
         var hasCommitsTask = repository.HasCommitsAsync();
+        var stashesTask = repository.GetStashesAsync();
+        var tagsTask = repository.GetTagsAsync();
         var graphTask = Task.Run(async () =>
         {
             var commits = await repository.GetCommitsAsync(CommitLimit);
@@ -549,6 +561,8 @@ public partial class MainViewModel : ViewModelBase
         var branches = await branchesTask;
         var operation = await operationTask;
         var hasCommits = await hasCommitsTask;
+        var stashes = await stashesTask;
+        var tags = await tagsTask;
         var mergeMessage = operation == RepositoryOperation.Merging ? await repository.GetMergeMessageAsync() : null;
         var (commits, rows) = await graphTask;
 
@@ -561,6 +575,7 @@ public partial class MainViewModel : ViewModelBase
         SyncStatus = status.Upstream is null ? "not published" : $"↑{status.Ahead}  ↓{status.Behind}";
         UpdateOperation(operation, mergeMessage);
         UpdateAmendState(hasCommits, status);
+        ApplyStashesAndTags(stashes, tags);
 
         // Keep showing the selected file; if all of it was just staged (or unstaged), follow it to the other list.
         var (selectedPath, wasStaged) = SelectedStagedFile is { } s ? (s.Path, true) : (SelectedUnstagedFile?.Path, false);

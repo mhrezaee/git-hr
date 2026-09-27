@@ -205,6 +205,75 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+
+                            <!-- Tags -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,16,8,0">
+                                <TextBlock Classes="section" Margin="12,0,8,4" Text="{Binding Tags.Count, StringFormat='TAGS ({0})'}" />
+                                <Button Grid.Column="1" Classes="small" Content="Push all" Command="{Binding PushAllTagsCommand}"
+                                        IsVisible="{Binding Tags.Count, Converter={x:Static app:Converters.IsPositive}}"
+                                        ToolTip.Tip="Push all tags to the remote" />
+                            </Grid>
+                            <ListBox x:Name="TagList" Classes="compact" ItemsSource="{Binding Tags}" SelectedItem="{Binding SelectedTag}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TagItemViewModel">
+                                        <Grid ColumnDefinitions="18,*,Auto" Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Show in history"
+                                                              Command="{Binding Owner.ShowTagInHistoryCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Checkout tag…"
+                                                              Command="{Binding Owner.CheckoutTagCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Create branch from tag…"
+                                                              Command="{Binding Owner.CreateBranchFromTagCommand}" CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="Push tag to remote"
+                                                              Command="{Binding Owner.PushTagCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Delete tag…"
+                                                              Command="{Binding Owner.DeleteTagCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Delete tag on remote…"
+                                                              Command="{Binding Owner.DeleteRemoteTagCommand}" CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="Copy tag name"
+                                                              Command="{Binding Owner.CopyTagNameCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
+                                            <TextBlock Text="◆" Foreground="#E0A83D" FontSize="10" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{Binding ShortSha}" Classes="muted" FontSize="11"
+                                                       FontFamily="{StaticResource MonoFont}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- Stashes -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,16,8,0">
+                                <TextBlock Classes="section" Margin="12,0,8,4" Text="{Binding Stashes.Count, StringFormat='STASHES ({0})'}" />
+                                <Button Grid.Column="1" Classes="small" Content="Stash…" Command="{Binding StashWithMessageCommand}"
+                                        ToolTip.Tip="Stash all changes (including untracked files) with a message" />
+                            </Grid>
+                            <ListBox x:Name="StashList" Classes="compact" ItemsSource="{Binding Stashes}" SelectedItem="{Binding SelectedStash}"
+                                     Margin="0,0,0,12">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StashItemViewModel">
+                                        <StackPanel Background="Transparent" ToolTip.Tip="Click to see its files, right-click to apply, pop or drop">
+                                            <StackPanel.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Apply (keep stash)"
+                                                              Command="{Binding Owner.ApplyStashCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Pop (apply and remove)"
+                                                              Command="{Binding Owner.PopStashCommand}" CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="Drop…"
+                                                              Command="{Binding Owner.DropStashCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </StackPanel.ContextMenu>
+                                            <TextBlock Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
@@ -223,6 +292,8 @@
                                                       Command="{Binding Owner.CheckoutCommitCommand}" CommandParameter="{Binding}" />
                                             <MenuItem Header="Create branch here…"
                                                       Command="{Binding Owner.CreateBranchAtCommitCommand}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Create annotated tag here…"
+                                                      Command="{Binding Owner.CreateAnnotatedTagAtCommitCommand}" CommandParameter="{Binding}" />
                                             <MenuItem Header="Create tag here…"
                                                       Command="{Binding Owner.CreateTagAtCommitCommand}" CommandParameter="{Binding}" />
                                             <Separator />
@@ -443,6 +514,42 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Stash" FontSize="14" IsVisible="{Binding HasSelectedStash}">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto">
+                            <StackPanel Margin="12" Spacing="4">
+                                <SelectableTextBlock Text="{Binding SelectedStash.Message}" TextWrapping="Wrap" FontSize="14" />
+                                <TextBlock Text="{Binding SelectedStash.Detail}" Classes="muted" FontSize="12" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Classes="section" Text="{Binding SelectedStashFiles.Count, StringFormat='FILES ({0})'}" />
+                            <ListBox Grid.Row="2" Classes="compact" ItemsSource="{Binding SelectedStashFiles}"
+                                     SelectedItem="{Binding SelectedStashFile}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:FileChangeItemViewModel">
+                                        <Grid ColumnDefinitions="Auto,*" ToolTip.Tip="{Binding ToolTip}">
+                                            <Border Width="18" Height="18" CornerRadius="3" Margin="0,0,8,0"
+                                                    Background="{Binding Kind, Converter={x:Static app:Converters.FileKindBrush}}">
+                                                <TextBlock Text="{Binding KindLetter}" FontSize="11" FontWeight="Bold" Foreground="White"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding FileName}" />
+                                                <TextBlock Text="{Binding Directory}" Classes="muted" FontSize="11" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="12" HorizontalAlignment="Right">
+                                <Button Classes="small danger" Content="Drop…" Command="{Binding DropStashCommand}" CommandParameter="{Binding SelectedStash}" />
+                                <Button Classes="small" Content="Apply" Command="{Binding ApplyStashCommand}" CommandParameter="{Binding SelectedStash}"
+                                        ToolTip.Tip="Apply the changes and keep the stash" />
+                                <Button Classes="small accent" Content="Pop" Command="{Binding PopStashCommand}" CommandParameter="{Binding SelectedStash}"
+                                        ToolTip.Tip="Apply the changes and remove the stash" />
+                            </StackPanel>
                         </Grid>
                     </TabItem>
                 </TabControl>

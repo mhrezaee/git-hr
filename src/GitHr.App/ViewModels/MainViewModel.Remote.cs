@@ -158,7 +158,7 @@ public partial class MainViewModel
     public partial bool IsAmend { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartAmendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartAmendCommand), nameof(CreateTagAtHeadCommand))]
     public partial bool CanAmend { get; set; }
 
     public string CommitButtonText => IsAmend ? "Amend last commit" : $"Commit {StagedFiles.Count} staged file(s)";

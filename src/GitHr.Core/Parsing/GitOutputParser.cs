@@ -15,6 +15,73 @@ public static partial class GitOutputParser
     public const string BranchFormat =
         "%(refname)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track,nobracket)";
 
+    /// <summary>Format passed to <c>git stash list --format</c>; matches <see cref="ParseStashes"/>.</summary>
+    public const string StashFormat = "%H%x1f%ct%x1f%gs%x1e";
+
+    /// <summary>Format passed to <c>git for-each-ref refs/tags --format</c>; matches <see cref="ParseTags"/>.</summary>
+    public const string TagFormat =
+        "%(refname:strip=2)%1f%(objecttype)%1f%(objectname)%1f%(*objectname)%1f%(creatordate:unix)%1f%(contents:subject)%1e";
+
+    /// <summary>Parses <c>git stash list</c>; entries come newest first, so the position is the stash index.</summary>
+    public static IReadOnlyList<Stash> ParseStashes(string output)
+    {
+        var stashes = new List<Stash>();
+        foreach (var rawRecord in output.Split(RecordSeparator))
+        {
+            var record = rawRecord.TrimStart('\r', '\n');
+            var fields = record.Split(FieldSeparator);
+            if (fields.Length < 3 || fields[0].Length == 0)
+            {
+                continue;
+            }
+            var subject = fields[2];
+            var date = DateTimeOffset.FromUnixTimeSeconds(long.Parse(fields[1], CultureInfo.InvariantCulture));
+            stashes.Add(new Stash(stashes.Count, fields[0], StashMessage(subject), StashBranch(subject), date));
+        }
+        return stashes;
+    }
+
+    /// <summary>"WIP on main: 1a2b3c4 Subject" / "On main: my message" → branch "main".</summary>
+    private static string? StashBranch(string subject)
+    {
+        var prefix = subject.StartsWith("WIP on ", StringComparison.Ordinal) ? "WIP on "
+            : subject.StartsWith("On ", StringComparison.Ordinal) ? "On " : null;
+        var colon = subject.IndexOf(':');
+        return prefix is null || colon <= prefix.Length ? null : subject[prefix.Length..colon];
+    }
+
+    /// <summary>The user's message ("On main: fix later" → "fix later"), or git's default text for a plain stash.</summary>
+    private static string StashMessage(string subject)
+    {
+        if (subject.StartsWith("On ", StringComparison.Ordinal) && subject.IndexOf(": ", StringComparison.Ordinal) is var i and > 0)
+        {
+            return subject[(i + 2)..];
+        }
+        return subject;
+    }
+
+    public static IReadOnlyList<Tag> ParseTags(string output)
+    {
+        var tags = new List<Tag>();
+        foreach (var rawRecord in output.Split(RecordSeparator))
+        {
+            var record = rawRecord.TrimStart('\r', '\n');
+            var fields = record.Split(FieldSeparator);
+            if (fields.Length < 6 || fields[0].Length == 0)
+            {
+                continue;
+            }
+            var annotated = fields[1] == "tag";
+            // Annotated tags point at a tag object; the commit is its peeled target (%(*objectname)).
+            var commit = annotated && fields[3].Length > 0 ? fields[3] : fields[2];
+            DateTimeOffset? date = long.TryParse(fields[4], CultureInfo.InvariantCulture, out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : null;
+            tags.Add(new Tag(fields[0], commit, annotated, annotated && fields[5].Length > 0 ? fields[5] : null, date));
+        }
+        return tags;
+    }
+
     public static IReadOnlyList<Commit> ParseLog(string output)
     {
         var commits = new List<Commit>();

@@ -3,8 +3,8 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
-![Tests](https://img.shields.io/badge/tests-81%20passing-2EA44F)
-![Core coverage](https://img.shields.io/badge/core%20coverage-91%25%20lines-2EA44F)
+![Tests](https://img.shields.io/badge/tests-95%20passing-2EA44F)
+![Core coverage](https://img.shields.io/badge/core%20coverage-91.5%25%20lines-2EA44F)
 ![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -43,7 +43,13 @@ Windows first; macOS and Linux run from the same code. No accounts, no paywall, 
 - Stage and unstage whole files, **single hunks, or selected lines** (Ctrl/Shift+click lines in the diff)
 - Discard changes per hunk, per selected line, per file, or all at once
 - Commit with Ctrl+Enter, or **amend the last commit** (message pre-filled; warns if it was already pushed)
-- Diff viewer with old/new line numbers; stash and pop stash
+- Diff viewer with old/new line numbers
+
+### Stashes and tags
+- **Stash list** in the sidebar with message, branch and date; stash with a message (untracked files included)
+- Click a stash to see its files — including stashed untracked files — and their diffs; **apply** (keep), **pop** (apply and remove) or **drop** any stash, not just the latest
+- **Tags** in the sidebar (newest first): click one to jump to its commit; check it out, create a branch from it, push it, delete it locally or on the remote
+- Create lightweight or **annotated** tags (with a message) from any commit or at HEAD; push all tags at once
 
 ### Remotes
 - Fetch (all remotes, prune deleted branches), pull and push; the first push of a new branch publishes it and sets its upstream
@@ -211,6 +217,24 @@ stateDiagram-v2
     end note
 ```
 
+### Stash lifecycle
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    Working: Uncommitted changes<br/>(tracked + untracked)
+    Stashed: Stash list<br/>stash@{0}, stash@{1}, ...
+    Working --> Stashed: Stash… (message)
+    Stashed --> Working: Pop — apply, then remove from list
+    Stashed --> Stashed: Apply — apply, keep in list
+    Stashed --> [*]: Drop (asks first)
+    note right of Stashed
+        A stash is a commit: parent 1 = HEAD at stash time,
+        parent 3 = untracked files. GitHr diffs against
+        those parents to show exactly what is inside.
+    end note
+```
+
 ### Commit graph layout
 
 `CommitGraph.Layout` assigns each commit (in `git log --date-order`) to a vertical lane in a single pass. Each lane remembers which commit it is heading to. A commit takes the lane that points to it (or the first free one); its first parent continues straight down the same lane, other parents open or join lanes; lanes that meet at a commit merge into it. The renderer (`CommitGraphCell`) then draws straight lines and S-curves per row — O(commits × lanes), fast enough for thousands of commits.
@@ -219,15 +243,15 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**81 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 90.7% line and 83.7% branch coverage.**
+**95 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 91.5% line and 83.3% branch coverage.**
 
 The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
 ```mermaid
 flowchart TB
-    UI["UI tests · 17<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs"]
-    INT["Integration tests · 30<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging)"]
-    UNIT["Unit tests · 34<br/>parsers · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
+    UI["UI tests · 23<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs"]
+    INT["Integration tests · 36<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging, stashes, tags)"]
+    UNIT["Unit tests · 36<br/>parsers (incl. stash list, tags) · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
     UI --- INT --- UNIT
     style UI fill:#8B44AC,color:#fff
     style INT fill:#16A9E0,color:#fff
@@ -240,6 +264,7 @@ flowchart TB
 | Git integration tests | `tests/GitHr.Core.Tests` | Every repository operation end to end: staging hunks/lines, discard, branches, merge/rebase conflicts with continue/abort, cherry-pick, revert, reset, tags, clone with progress and cancel, fetch/pull/push, force-with-lease |
 | Headless UI tests | `tests/GitHr.App.Tests` | Clicking the real buttons and context menus, command palette keyboard flow, clone dialog behavior, amend, conflict banner — plus rendered frames saved for visual inspection |
 | View-model unit tests | `tests/GitHr.App.Tests` | Palette fuzzy scoring, progress percentage parsing, clipboard URL suggestion rules |
+| Stash & tag tests | both | Parsing `stash list` / tags (annotated tags peeled to their commit), stashed untracked files and their diffs, apply/pop/drop by index, pushing and deleting tags on a bare remote, sidebar menus and the stash tab |
 
 Test isolation:
 - Each test creates its own repository under the temp folder and deletes it afterwards.
@@ -294,7 +319,7 @@ Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the 
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test                                        # all 81 tests
+dotnet test                                        # all 95 tests
 dotnet test --project tests/GitHr.App.Tests        # one suite
 dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
 ```
@@ -327,7 +352,7 @@ GitHr/
 │   │   └── Parsing/GitOutputParser.cs
 │   └── GitHr.App/                  # Avalonia desktop app
 │       ├── Views/                  # MainWindow, CloneDialog, Dialogs
-│       ├── ViewModels/             # MainViewModel (+ Actions, Remote partials), palette, clone dialog, items
+│       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags partials), palette, clone dialog, items
 │       ├── Controls/CommitGraphCell.cs
 │       ├── AppSettings.cs          # recent repositories, clone folder (per-user app data)
 │       └── Converters.cs
@@ -342,7 +367,6 @@ GitHr/
 ## Roadmap
 
 - Merge conflict resolver (ours / theirs / result)
-- Stash list and tags in the sidebar
 - Interactive rebase (reorder, squash, reword, drop)
 - Side-by-side diff with syntax highlighting
 - Search and filtering in history, file history, blame

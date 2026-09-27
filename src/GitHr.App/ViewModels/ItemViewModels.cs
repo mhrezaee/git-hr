@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GitHr.Core;
 using GitHr.Core.Graph;
 
@@ -94,6 +95,31 @@ public sealed class DiffLineViewModel(DiffLine line, int index, DiffMode mode, M
 
     public bool ShowStageHunk => Line.IsHunk && mode == DiffMode.Unstaged;
     public bool ShowUnstageHunk => Line.IsHunk && mode == DiffMode.Staged;
+}
+
+public sealed class StashItemViewModel(Stash stash, MainViewModel owner)
+{
+    public Stash Stash { get; } = stash;
+    public MainViewModel Owner { get; } = owner;
+    public string Name => Stash.Name;
+    public string Message => Stash.Message;
+
+    /// <summary>"stash@{0} · main · 2026-09-27 10:15"</summary>
+    public string Detail => string.Join(" · ", new[] { Stash.Name, Stash.Branch, Stash.Date.LocalDateTime.ToString("yyyy-MM-dd HH:mm") }
+        .Where(part => !string.IsNullOrEmpty(part)));
+}
+
+public sealed class TagItemViewModel(Tag tag, MainViewModel owner)
+{
+    public Tag Tag { get; } = tag;
+    public MainViewModel Owner { get; } = owner;
+    public string Name => Tag.Name;
+    public string ShortSha => Tag.ShortSha;
+    public bool IsAnnotated => Tag.IsAnnotated;
+
+    public string ToolTip => Tag.Message is { } message
+        ? $"{Tag.Name} → {Tag.ShortSha}\n{message}"
+        : $"{Tag.Name} → {Tag.ShortSha} (lightweight tag)";
 }
 
 public sealed class RecentRepositoryViewModel(string path)

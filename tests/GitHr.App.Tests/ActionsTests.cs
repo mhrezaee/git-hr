@@ -194,12 +194,4 @@ public sealed class ActionsTests : UiTestBase
         Assert.Equal("main\n", await File.ReadAllTextAsync(Path.Combine(Dir, "a.txt")));
         Assert.Equal("", vm.CommitMessage); // prefilled message cleared again
     });
-
-    /// <summary>The visual row (item container content) showing <paramref name="item"/>.</summary>
-    private static Control RowOf(Window window, object item)
-    {
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); // let freshly replaced lists realize their rows
-        return window.GetVisualDescendants().OfType<ListBoxItem>().First(i => ReferenceEquals(i.DataContext, item))
-            .GetVisualDescendants().OfType<Control>().First(c => c.ContextMenu is not null);
-    }
 }

@@ -35,6 +35,21 @@ public sealed record Branch(
     int Behind,
     bool IsUpstreamGone);
 
+/// <summary>An entry of <c>git stash list</c>.</summary>
+/// <param name="Index">Position in the stash list; 0 is the newest (<c>stash@{0}</c>).</param>
+/// <param name="Branch">Branch the changes were stashed from, if git recorded one.</param>
+public sealed record Stash(int Index, string Sha, string Message, string? Branch, DateTimeOffset Date)
+{
+    public string Name => $"stash@{{{Index}}}";
+}
+
+/// <param name="CommitSha">The commit the tag points at (for annotated tags, the peeled target).</param>
+/// <param name="Message">Annotation subject for annotated tags; null for lightweight tags.</param>
+public sealed record Tag(string Name, string CommitSha, bool IsAnnotated, string? Message, DateTimeOffset? Date)
+{
+    public string ShortSha => CommitSha.Length > 7 ? CommitSha[..7] : CommitSha;
+}
+
 public enum FileChangeKind
 {
     Modified,
