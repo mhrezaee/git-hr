@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitHr.Core;
+using GitHr.Core.Diff;
 using GitHr.Core.Graph;
 
 namespace GitHr.App.ViewModels;
@@ -29,6 +30,7 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel(AppSettings settings)
     {
         _settings = settings;
+        IsSplitDiff = settings.SplitDiff;
         Palette = new CommandPaletteViewModel(GetPaletteItems);
         LoadRecent();
     }
@@ -45,6 +47,8 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<FileChangeItemViewModel> StagedFiles { get; } = [];
     public ObservableCollection<FileChangeItemViewModel> SelectedCommitFiles { get; } = [];
     public ObservableCollection<DiffLineViewModel> DiffLines { get; } = [];
+    /// <summary>The same diff as <see cref="DiffLines"/>, as side-by-side rows; only filled while <see cref="IsSplitDiff"/>.</summary>
+    public ObservableCollection<DiffRowViewModel> DiffRows { get; } = [];
     public ObservableCollection<RecentRepositoryViewModel> RecentRepositories { get; } = [];
 
     [ObservableProperty]
@@ -325,6 +329,7 @@ public partial class MainViewModel : ViewModelBase
             ("Stage all changes", "Changes", StageAllCommand, null),
             ("Unstage all changes", "Changes", UnstageAllCommand, null),
             ("Discard all changes…", "Changes", DiscardAllCommand, null),
+            ("Toggle side-by-side diff", "View", ToggleSplitDiffCommand, null),
             ("Stash all changes", "Stash", StashCommand, null),
             ("Stash with message…", "Stash", StashWithMessageCommand, null),
             ("Pop latest stash", "Stash", StashPopCommand, null),
@@ -411,7 +416,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (value is not null && SelectedCommit is { } commit)
         {
-            _ = LoadDiffAsync($"{value.Path} @ {commit.ShortSha}", DiffMode.ReadOnly,
+            _ = LoadDiffAsync($"{value.Path} @ {commit.ShortSha}", value.Path, DiffMode.ReadOnly,
                 (r, ct) => r.GetCommitDiffAsync(commit.Commit, value.Change, ct));
         }
     }
@@ -423,7 +428,7 @@ public partial class MainViewModel : ViewModelBase
             SelectedStagedFile = null;
             // Untracked and conflicted files have no patchable diff: stage or discard them as a whole.
             var mode = value.Kind is FileChangeKind.Untracked or FileChangeKind.Conflicted ? DiffMode.ReadOnly : DiffMode.Unstaged;
-            _ = LoadDiffAsync($"{value.Path} (unstaged)", mode, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: false, ct));
+            _ = LoadDiffAsync($"{value.Path} (unstaged)", value.Path, mode, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: false, ct));
         }
     }
 
@@ -432,7 +437,7 @@ public partial class MainViewModel : ViewModelBase
         if (value is not null)
         {
             SelectedUnstagedFile = null;
-            _ = LoadDiffAsync($"{value.Path} (staged)", DiffMode.Staged, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: true, ct));
+            _ = LoadDiffAsync($"{value.Path} (staged)", value.Path, DiffMode.Staged, (r, ct) => r.GetWorkingDiffAsync(value.Change, staged: true, ct));
         }
     }
 
@@ -468,7 +473,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadDiffAsync(string title, DiffMode mode, Func<GitRepository, CancellationToken, Task<IReadOnlyList<DiffLine>>> load)
+    private async Task LoadDiffAsync(string title, string path, DiffMode mode, Func<GitRepository, CancellationToken, Task<IReadOnlyList<DiffLine>>> load)
     {
         if (_repository is not { } repository)
         {
@@ -478,20 +483,17 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var lines = await load(repository, ct);
+            // Syntax highlighting can take a moment on big diffs: keep the UI responsive.
+            var styles = await Task.Run(() => DiffStyles.Compute(path, lines), ct);
             if (ct.IsCancellationRequested)
             {
                 return;
             }
             DiffTitle = title;
             _diff = lines;
+            _diffStyles = styles;
             CurrentDiffMode = lines.Any(l => l.IsHunk) ? mode : DiffMode.ReadOnly;
-            SetDiffSelection([]);
-            Replace(DiffLines, lines.Select((line, i) => new DiffLineViewModel(line, i, CurrentDiffMode, this)));
-            if (lines.Count == 0)
-            {
-                DiffLines.Add(new DiffLineViewModel(
-                    new DiffLine(DiffLineKind.Header, "No text changes (binary file, mode change or empty file)."), -1, DiffMode.ReadOnly, this));
-            }
+            ShowDiff();
         }
         catch (OperationCanceledException)
         {
@@ -509,13 +511,42 @@ public partial class MainViewModel : ViewModelBase
         return _detailsCts.Token;
     }
 
+    /// <summary>Fills <see cref="DiffLines"/> (and <see cref="DiffRows"/> in split mode) from the loaded diff.</summary>
+    private void ShowDiff()
+    {
+        SetSelectedChangeLines([]);
+        var unified = _diff.Select((line, i) => new DiffLineViewModel(line, i, CurrentDiffMode, this, _diffStyles.For(line, i, withPrefix: true))).ToList();
+        if (_diff.Count == 0 && DiffTitle is not null)
+        {
+            var text = "No text changes (binary file, mode change or empty file).";
+            unified.Add(new DiffLineViewModel(new DiffLine(DiffLineKind.Header, text), -1, DiffMode.ReadOnly, this, StyledText.Plain(text)));
+        }
+        Replace(DiffLines, unified);
+
+        if (!IsSplitDiff)
+        {
+            DiffRows.Clear();
+        }
+        else if (_diff.Count == 0)
+        {
+            Replace(DiffRows, unified.Select(line =>
+                new DiffRowViewModel(new DiffRow(DiffRowKind.Header, null, null), line, DiffCellViewModel.Empty, DiffCellViewModel.Empty)));
+        }
+        else
+        {
+            Replace(DiffRows, DiffRowViewModel.Build(_diff, unified, _diffStyles));
+        }
+    }
+
     private void ClearDiff()
     {
         DiffTitle = null;
         _diff = [];
+        _diffStyles = DiffStyles.None;
         CurrentDiffMode = DiffMode.ReadOnly;
-        SetDiffSelection([]);
+        SetSelectedChangeLines([]);
         DiffLines.Clear();
+        DiffRows.Clear();
     }
 
     // ---------- Plumbing ----------

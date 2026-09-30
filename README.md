@@ -4,8 +4,8 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
-![Tests](https://img.shields.io/badge/tests-119%20passing-2EA44F)
-![Core coverage](https://img.shields.io/badge/core%20coverage-92.6%25%20lines-2EA44F)
+![Tests](https://img.shields.io/badge/tests-144%20passing-2EA44F)
+![Core coverage](https://img.shields.io/badge/core%20coverage-92.3%25%20lines-2EA44F)
 ![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -45,7 +45,13 @@ Windows first; macOS and Linux run from the same code. No accounts, no paywall, 
 - Stage and unstage whole files, **single hunks, or selected lines** (Ctrl/Shift+click lines in the diff)
 - Discard changes per hunk, per selected line, per file, or all at once
 - Commit with Ctrl+Enter, or **amend the last commit** (message pre-filled; warns if it was already pushed)
-- Diff viewer with old/new line numbers
+
+### Diff viewer
+- **Syntax highlighting** for C#, XAML/XML, JSON, TypeScript/JavaScript, Python, Markdown, YAML, shell and every other language with a TextMate grammar (the same grammars VS Code uses), in the Dark+ theme
+- **Changed words stand out**: in a replaced line, the part that actually changed gets a stronger background
+- **Unified or side by side** (old version left, new version right, replacements on the same row): toggle with **Side by side** or from the command palette; the choice is remembered
+- Staging, unstaging and discarding hunks and selected lines work in both layouts — in side by side, selecting a row selects its removed and its added line
+- The same viewer for working-tree, staged, commit and stash diffs, with old/new line numbers
 
 ### Stashes and tags
 - **Stash list** in the sidebar with message, branch and date; stash with a message (untracked files included)
@@ -81,7 +87,7 @@ flowchart TB
         direction TB
         Views["Views<br/>MainWindow · CloneDialog · Dialogs"]
         VMs["ViewModels (MVVM)<br/>MainViewModel · CommandPalette · CloneDialog · item VMs"]
-        Controls["Controls<br/>CommitGraphCell (custom rendering)"]
+        Controls["Controls<br/>CommitGraphCell (custom rendering) · DiffText (colored runs)"]
         Views -- "compiled bindings" --> VMs
         Views --> Controls
     end
@@ -95,8 +101,11 @@ flowchart TB
         Patch["PatchBuilder<br/>partial hunk / line patches"]
         Url["GitUrl"]
         Conf["ConflictDocument<br/>conflict markers → blocks → result"]
+        DiffView["Diff<br/>SideBySideDiff · InlineChanges · SyntaxHighlighter"]
+        TM["TextMateSharp<br/>TextMate grammars + Dark+ theme"]
         Repo --> Runner
         Repo --> Parser
+        DiffView --> TM
     end
 
     subgraph System["Installed on the machine"]
@@ -112,6 +121,7 @@ flowchart TB
     VMs --> Patch
     VMs --> Url
     VMs --> Conf
+    VMs --> DiffView
     Runner -- "child process" --> Git
     Git --> GCM
     Git --> SSH
@@ -126,12 +136,14 @@ flowchart TB
 | **ViewModels** | UI state, commands, confirmation rules, busy/progress/cancel handling, selection | Start processes or parse Git output |
 | **Core: `GitRepository`** | One method per Git operation, typed results, error translation (`GitException`) | Know about windows, threads or dialogs |
 | **Core: `GitRunner`** | Run `git` safely: argument lists (no shell quoting), UTF-8, no terminal prompts, streamed progress, kill on cancel | Interpret results |
-| **Core: pure algorithms** | `GitOutputParser`, `CommitGraph`, `PatchBuilder`, `ConflictDocument`, `GitUrl` — deterministic functions over text | Perform I/O |
+| **Core: pure algorithms** | `GitOutputParser`, `CommitGraph`, `PatchBuilder`, `ConflictDocument`, `GitUrl`, `SideBySideDiff`, `InlineChanges`, `SyntaxHighlighter` — deterministic functions over text | Perform I/O |
 
 ### Threading model
 
 - The UI thread only updates view models. Git runs in child processes awaited asynchronously, so the window never freezes.
 - Commit graph layout for thousands of commits runs on the thread pool (`Task.Run`), then results are applied on the UI thread.
+- Syntax highlighting of a diff runs on the thread pool too, within a time budget; a newer file selection cancels an older one, so fast clicking never shows a stale diff.
+- User actions wait for a running background refresh instead of being dropped (closing a confirmation dialog re-activates the window, which refreshes).
 - Live progress is read from git's stderr as it arrives and marshalled to the UI thread via `Progress<T>` (which captures the UI synchronization context).
 - Every long operation has a `CancellationToken`; cancelling kills the whole git process tree and, for clones, removes the half-written folder.
 
@@ -146,6 +158,9 @@ flowchart TB
 | **`GIT_TERMINAL_PROMPT=0`, `GIT_EDITOR=true`, stdin closed** | A GUI has no terminal: git must never block waiting for input or an editor. GUI credential helpers still show their sign-in windows. | Features that need an editor (interactive rebase) get their own UI |
 | **Conflicts resolved from the working-tree markers, then `git add`** | Works with every git conflict style (incl. `diff3`/`zdiff3`) and any merge strategy; the result is exactly what git expects, and editing the file elsewhere keeps working | Marker parsing must be robust — malformed markers are treated as text, and `ConflictDocument` has 98% line coverage |
 | **Partial staging via generated patches + `git apply --cached`** | Exactly the same result as command-line git; works for index and working tree, forward and reverse | Patch building needs care when removed/added lines interleave — covered by dedicated tests |
+| **Syntax highlighting with TextMate grammars (TextMateSharp)** | The grammars and theme VS Code uses: dozens of languages with no per-language code, pure .NET so it stays in Core and is unit-tested | Grammars are regex-based — the old and new side are tokenized as separate streams, each hunk starts fresh, and a per-diff time budget keeps huge diffs fast (they stay uncolored beyond it) |
+| **Side by side is a view over the same parsed diff** | Rows only pair up line indexes of the unified diff, so hunk and line staging reuse `PatchBuilder` unchanged and both layouts always agree | A selected row stages its removed and added line together; to stage just one of them, select it in the unified layout |
+| **Changed words from common prefix/suffix, widened to whole words** | Cheap (linear per line pair) and exactly right for the common case of a changed identifier, literal or argument | Several separate edits in one line are shown as one changed range |
 | **Avalonia UI** | One codebase for Windows, macOS and Linux; Skia rendering looks identical everywhere; a real headless mode for UI tests | Smaller ecosystem than web UI stacks |
 | **MVVM with CommunityToolkit.Mvvm source generators** | Testable view models, no reflection-heavy frameworks, compile-time checked bindings | Some boilerplate in item view models (`Owner` references for context menus) |
 | **Destructive actions always confirm; Enter never confirms them** | Discard, reset hard, force delete and force push cannot be undone | One extra click |
@@ -177,6 +192,33 @@ sequenceDiagram
     VM->>Repo: reload status, branches, graph, operation (in parallel)
     Repo-->>VM: new state
     VM-->>View: diff re-rendered, file follows to "Staged" if fully staged
+```
+
+### Showing a diff
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant View as Diff view
+    participant VM as MainViewModel
+    participant Repo as GitRepository
+    participant Styles as DiffStyles
+    participant SH as SyntaxHighlighter
+    participant SBS as SideBySideDiff
+
+    User->>View: select a file (changes, commit or stash)
+    View->>VM: SelectedUnstagedFile changed
+    VM->>Repo: GetWorkingDiffAsync (git diff)
+    Repo-->>VM: parsed DiffLines
+    VM->>Styles: Compute(path, lines) on the thread pool
+    Styles->>SH: Highlight (old and new side as separate streams)
+    Styles->>Styles: InlineChanges (changed part of each replaced line)
+    Styles-->>VM: colors and ranges per line index
+    alt side by side
+        VM->>SBS: Build(lines)
+        SBS-->>VM: rows of (old index, new index)
+    end
+    VM-->>View: DiffLines or DiffRows, drawn by DiffText as colored runs
 ```
 
 ### Cloning a private repository
@@ -284,15 +326,15 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**119 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.6% line and 85.3% branch coverage.**
+**144 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.3% line and 84.4% branch coverage.**
 
 The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
 ```mermaid
 flowchart TB
-    UI["UI tests · 28<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs, conflict resolver"]
+    UI["UI tests · 34<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs, conflict resolver, diff viewer"]
     INT["Integration tests · 43<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging, stashes, tags, conflict resolution)"]
-    UNIT["Unit tests · 47<br/>parsers (incl. stash list, tags, conflict markers) · commit graph · patch builder · URL parsing<br/>palette scoring · progress parsing · clone dialog rules"]
+    UNIT["Unit tests · 67<br/>parsers (incl. stash list, tags, conflict markers) · commit graph · patch builder · URL parsing<br/>side-by-side rows · changed words · syntax highlighting<br/>palette scoring · progress parsing · clone dialog rules"]
     UI --- INT --- UNIT
     style UI fill:#8B44AC,color:#fff
     style INT fill:#16A9E0,color:#fff
@@ -306,6 +348,7 @@ flowchart TB
 | Headless UI tests | `tests/GitHr.App.Tests` | Clicking the real buttons and context menus, command palette keyboard flow, clone dialog behavior, amend, conflict banner — plus rendered frames saved for visual inspection |
 | View-model unit tests | `tests/GitHr.App.Tests` | Palette fuzzy scoring, progress percentage parsing, clipboard URL suggestion rules |
 | Conflict tests | both | Marker parsing and rendering (diff3 base sections, CRLF, missing final newline, malformed markers), BOM kept exactly once, delete-vs-modify conflicts, whole-side choices, the resolver window from double-click to `merge --continue` |
+| Diff viewer tests | both | Side-by-side pairing (replacements, uneven blocks, "no newline" markers), changed-word ranges, syntax colors per language and per side, the rendered runs in the real window, staging a side-by-side row and a hunk, the layout being remembered — plus screenshots of both layouts |
 | Stash & tag tests | both | Parsing `stash list` / tags (annotated tags peeled to their commit), stashed untracked files and their diffs, apply/pop/drop by index, pushing and deleting tags on a bare remote, sidebar menus and the stash tab |
 
 Test isolation:
@@ -388,7 +431,7 @@ Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the 
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test                                        # all 119 tests
+dotnet test                                        # all 144 tests
 dotnet test --project tests/GitHr.App.Tests        # one suite
 dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
 ```
@@ -418,13 +461,14 @@ GitHr/
 │   │   ├── PatchBuilder.cs         # partial hunk/line patches for git apply
 │   │   ├── GitUrl.cs               # repository name from a clone URL
 │   │   ├── Conflicts/              # ConflictDocument (marker parsing/rendering), ConflictInfo
+│   │   ├── Diff/                   # SideBySideDiff, InlineChanges, SyntaxHighlighter (TextMateSharp)
 │   │   ├── Graph/CommitGraph.cs    # commit graph lane layout
 │   │   └── Parsing/GitOutputParser.cs
 │   └── GitHr.App/                  # Avalonia desktop app
 │       ├── Views/                  # MainWindow, CloneDialog, ConflictResolverWindow, Dialogs
-│       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags, Conflicts partials), palette, clone dialog, conflict resolver, items
-│       ├── Controls/CommitGraphCell.cs
-│       ├── AppSettings.cs          # recent repositories, clone folder (per-user app data)
+│       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags, Conflicts partials), palette, clone dialog, conflict resolver, diff lines/rows, items
+│       ├── Controls/               # CommitGraphCell (graph lanes), DiffText (colored diff lines)
+│       ├── AppSettings.cs          # recent repositories, clone folder, diff layout (per-user app data)
 │       └── Converters.cs
 ├── tests/
 │   ├── GitHr.Core.Tests/           # unit + integration tests against real repositories (xUnit v4)
@@ -441,7 +485,7 @@ GitHr/
 ## Roadmap
 
 - Interactive rebase (reorder, squash, reword, drop)
-- Side-by-side diff with syntax highlighting
+- Word-level diff for lines with several separate edits; ignore-whitespace option
 - Search and filtering in history, file history, blame
 - GitHub / Azure DevOps pull requests
 - Multiple repository tabs, settings, light theme

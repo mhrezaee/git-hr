@@ -79,25 +79,6 @@ public enum DiffMode
     Staged,
 }
 
-public sealed class DiffLineViewModel(DiffLine line, int index, DiffMode mode, MainViewModel owner)
-{
-    public DiffLine Line { get; } = line;
-    /// <summary>Position in the parsed diff; what <see cref="PatchBuilder"/> selections refer to.</summary>
-    public int Index { get; } = index;
-    public MainViewModel Owner { get; } = owner;
-
-    public string Text => Line.Text;
-    public string OldNumber => Line.OldLineNumber?.ToString() ?? "";
-    public string NewNumber => Line.NewLineNumber?.ToString() ?? "";
-    public bool IsHeader => Line.IsHeader;
-    public bool IsHunk => Line.IsHunk;
-    public bool IsAdded => Line.IsAdded;
-    public bool IsRemoved => Line.IsRemoved;
-
-    public bool ShowStageHunk => Line.IsHunk && mode == DiffMode.Unstaged;
-    public bool ShowUnstageHunk => Line.IsHunk && mode == DiffMode.Staged;
-}
-
 public sealed class StashItemViewModel(Stash stash, MainViewModel owner)
 {
     public Stash Stash { get; } = stash;

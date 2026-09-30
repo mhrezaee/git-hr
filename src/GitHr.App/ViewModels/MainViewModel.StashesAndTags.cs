@@ -59,7 +59,7 @@ public partial class MainViewModel
     {
         if (value is not null && SelectedStash is { } stash)
         {
-            _ = LoadDiffAsync($"{value.Path} @ {stash.Name}", DiffMode.ReadOnly,
+            _ = LoadDiffAsync($"{value.Path} @ {stash.Name}", value.Path, DiffMode.ReadOnly,
                 (r, ct) => r.GetStashDiffAsync(stash.Stash, value.Change, ct));
         }
     }

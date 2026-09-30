@@ -18,6 +18,20 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <Window.Resources>
+        <!-- Stage / discard / unstage buttons of a hunk header, shared by the unified and the side-by-side diff. -->
+        <DataTemplate x:Key="HunkActions" x:DataType="vm:DiffLineViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,1">
+                <Button Classes="small" Content="Stage hunk" IsVisible="{Binding ShowStageHunk}"
+                        Command="{Binding Owner.StageHunkCommand}" CommandParameter="{Binding}" />
+                <Button Classes="small danger" Content="Discard hunk" IsVisible="{Binding ShowStageHunk}"
+                        Command="{Binding Owner.DiscardHunkCommand}" CommandParameter="{Binding}" />
+                <Button Classes="small" Content="Unstage hunk" IsVisible="{Binding ShowUnstageHunk}"
+                        Command="{Binding Owner.UnstageHunkCommand}" CommandParameter="{Binding}" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
     <Panel>
     <DockPanel>
         <!-- ================= Toolbar ================= -->
@@ -363,35 +377,69 @@
                                         Command="{Binding DiscardLinesCommand}" ToolTip.Tip="Discard only the selected lines" />
                                 <Button Classes="small" Content="Unstage lines" IsVisible="{Binding IsStagedDiff}"
                                         Command="{Binding UnstageLinesCommand}" ToolTip.Tip="Unstage only the selected lines" />
+                                <ToggleButton x:Name="SplitDiffToggle" Classes="small" Content="Side by side" IsChecked="{Binding IsSplitDiff}"
+                                              ToolTip.Tip="Show the old version on the left and the new version on the right" />
                             </StackPanel>
                         </Grid>
-                        <ListBox x:Name="DiffList" Classes="diff" ItemsSource="{Binding DiffLines}" SelectionMode="Multiple"
-                                 SelectionChanged="DiffList_SelectionChanged" Background="{StaticResource AppBackground}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:DiffLineViewModel">
-                                    <Border Classes="diffline"
-                                            Classes.added="{Binding IsAdded}"
-                                            Classes.removed="{Binding IsRemoved}"
-                                            Classes.hunk="{Binding IsHunk}"
-                                            Classes.header="{Binding IsHeader}">
-                                        <Grid ColumnDefinitions="40,40,*,Auto">
-                                            <TextBlock Text="{Binding OldNumber}" Classes="lineno" />
-                                            <TextBlock Grid.Column="1" Text="{Binding NewNumber}" Classes="lineno" />
-                                            <TextBlock Grid.Column="2" Text="{Binding Text}" FontFamily="{StaticResource MonoFont}" FontSize="12"
-                                                       VerticalAlignment="Center" />
-                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="4,1">
-                                                <Button Classes="small" Content="Stage hunk" IsVisible="{Binding ShowStageHunk}"
-                                                        Command="{Binding Owner.StageHunkCommand}" CommandParameter="{Binding}" />
-                                                <Button Classes="small danger" Content="Discard hunk" IsVisible="{Binding ShowStageHunk}"
-                                                        Command="{Binding Owner.DiscardHunkCommand}" CommandParameter="{Binding}" />
-                                                <Button Classes="small" Content="Unstage hunk" IsVisible="{Binding ShowUnstageHunk}"
-                                                        Command="{Binding Owner.UnstageHunkCommand}" CommandParameter="{Binding}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                        <Panel>
+                            <ListBox x:Name="DiffList" Classes="diff" ItemsSource="{Binding DiffLines}" SelectionMode="Multiple"
+                                     IsVisible="{Binding !IsSplitDiff}"
+                                     SelectionChanged="DiffList_SelectionChanged" Background="{StaticResource AppBackground}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiffLineViewModel">
+                                        <Border Classes="diffline"
+                                                Classes.added="{Binding IsAdded}"
+                                                Classes.removed="{Binding IsRemoved}"
+                                                Classes.hunk="{Binding IsHunk}"
+                                                Classes.header="{Binding IsHeader}">
+                                            <Grid ColumnDefinitions="40,40,*,Auto">
+                                                <TextBlock Text="{Binding OldNumber}" Classes="lineno" />
+                                                <TextBlock Grid.Column="1" Text="{Binding NewNumber}" Classes="lineno" />
+                                                <controls:DiffText Grid.Column="2" Classes="code" Styled="{Binding Styled}" />
+                                                <ContentControl Grid.Column="3" Content="{Binding}" ContentTemplate="{StaticResource HunkActions}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- Side by side: old on the left, new on the right. Long lines wrap so both halves stay visible. -->
+                            <ListBox x:Name="SplitDiffList" Classes="diff" ItemsSource="{Binding DiffRows}" SelectionMode="Multiple"
+                                     IsVisible="{Binding IsSplitDiff}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="SplitDiffList_SelectionChanged" Background="{StaticResource AppBackground}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiffRowViewModel">
+                                        <Panel>
+                                            <Border Classes="diffline" IsVisible="{Binding IsSpanning}"
+                                                    Classes.hunk="{Binding IsHunk}" Classes.header="{Binding IsHeader}">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <controls:DiffText Classes="code" Styled="{Binding Line.Styled}" TextWrapping="Wrap" />
+                                                    <ContentControl Grid.Column="1" Content="{Binding Line}" ContentTemplate="{StaticResource HunkActions}" />
+                                                </Grid>
+                                            </Border>
+                                            <Grid ColumnDefinitions="*,*" IsVisible="{Binding IsLines}">
+                                                <Border Classes="diffline cell"
+                                                        Classes.removed="{Binding Left.IsRemoved}" Classes.empty="{Binding Left.IsEmpty}"
+                                                        Classes.header="{Binding Left.IsMarker}">
+                                                    <Grid ColumnDefinitions="40,*">
+                                                        <TextBlock Text="{Binding Left.Number}" Classes="lineno" />
+                                                        <controls:DiffText Grid.Column="1" Classes="code" Styled="{Binding Left.Styled}" TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </Border>
+                                                <Border Grid.Column="1" Classes="diffline cell right"
+                                                        Classes.added="{Binding Right.IsAdded}" Classes.empty="{Binding Right.IsEmpty}"
+                                                        Classes.header="{Binding Right.IsMarker}">
+                                                    <Grid ColumnDefinitions="40,*">
+                                                        <TextBlock Text="{Binding Right.Number}" Classes="lineno" />
+                                                        <controls:DiffText Grid.Column="1" Classes="code" Styled="{Binding Right.Styled}" TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </Panel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Panel>
                     </DockPanel>
                 </Grid>
 

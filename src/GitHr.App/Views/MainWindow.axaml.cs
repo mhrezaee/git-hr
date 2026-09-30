@@ -59,6 +59,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SplitDiffList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox list && DataContext is MainViewModel vm)
+        {
+            vm.SetDiffSelection(list.SelectedItems?.OfType<DiffRowViewModel>() ?? []);
+        }
+    }
+
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))

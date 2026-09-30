@@ -38,6 +38,15 @@ public sealed class AppSettings
         }
     }
 
+    /// <summary>Show diffs side by side (old left, new right) instead of unified.</summary>
+    public bool SplitDiff { get; set; }
+
+    public void SetSplitDiff(bool split)
+    {
+        SplitDiff = split;
+        Save();
+    }
+
     public void SetCloneFolder(string folder)
     {
         CloneFolder = folder;

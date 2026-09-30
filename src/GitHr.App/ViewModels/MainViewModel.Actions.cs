@@ -12,6 +12,7 @@ namespace GitHr.App.ViewModels;
 public partial class MainViewModel
 {
     private IReadOnlyList<DiffLine> _diff = [];
+    private DiffStyles _diffStyles = DiffStyles.None;
     private IReadOnlySet<int> _selectedDiffLines = new HashSet<int>();
     private string? _prefilledMergeMessage;
 
@@ -220,10 +221,37 @@ public partial class MainViewModel
     public partial int SelectedChangeLineCount { get; set; }
 
     /// <summary>Called by the diff list when its selection changes (Ctrl/Shift+click for several lines).</summary>
-    public void SetDiffSelection(IEnumerable<DiffLineViewModel> lines)
+    public void SetDiffSelection(IEnumerable<DiffLineViewModel> lines) =>
+        SetSelectedChangeLines(lines.Where(l => l.Line.IsChange).Select(l => l.Index));
+
+    /// <summary>Side-by-side list: a selected row selects its removed and its added line.</summary>
+    public void SetDiffSelection(IEnumerable<DiffRowViewModel> rows) =>
+        SetSelectedChangeLines(rows.SelectMany(r => r.Row.ChangeIndexes));
+
+    private void SetSelectedChangeLines(IEnumerable<int> changeIndexes)
     {
-        _selectedDiffLines = lines.Where(l => l.Line.IsChange).Select(l => l.Index).ToHashSet();
+        _selectedDiffLines = changeIndexes.ToHashSet();
         SelectedChangeLineCount = _selectedDiffLines.Count;
+    }
+
+    /// <summary>Old and new version next to each other instead of one unified list; remembered across sessions.</summary>
+    [ObservableProperty]
+    public partial bool IsSplitDiff { get; set; }
+
+    partial void OnIsSplitDiffChanged(bool value)
+    {
+        if (_settings.SplitDiff != value)
+        {
+            _settings.SetSplitDiff(value);
+        }
+        ShowDiff();
+    }
+
+    [RelayCommand]
+    private Task ToggleSplitDiffAsync()
+    {
+        IsSplitDiff = !IsSplitDiff;
+        return Task.CompletedTask; // async so the command palette can list it
     }
 
     private bool HasSelectedLines => SelectedChangeLineCount > 0;
