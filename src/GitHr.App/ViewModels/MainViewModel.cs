@@ -71,6 +71,28 @@ public partial class MainViewModel : ViewModelBase
         nameof(CloneCommand), nameof(ForcePushCommand), nameof(StashWithMessageCommand), nameof(PushAllTagsCommand))]
     public partial bool IsBusy { get; set; }
 
+    /// <summary>Completes when the current busy period ends.</summary>
+    private TaskCompletionSource _idle = CompletedIdle();
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        if (value)
+        {
+            _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        else
+        {
+            _idle.TrySetResult();
+        }
+    }
+
+    private static TaskCompletionSource CompletedIdle()
+    {
+        var idle = new TaskCompletionSource();
+        idle.SetResult();
+        return idle;
+    }
+
     [ObservableProperty]
     public partial string? BusyText { get; set; }
 
@@ -508,7 +530,13 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     private async Task<bool> RunGitAsync(string busyText, Func<GitRepository, IProgress<string>, CancellationToken, Task> action, bool cancellable)
     {
-        if (_repository is not { } repository || IsBusy)
+        // Wait instead of dropping the action: closing a confirmation dialog re-activates the window, which starts a
+        // refresh just before the confirmed action (discard, reset, delete…) gets here.
+        while (IsBusy)
+        {
+            await _idle.Task;
+        }
+        if (_repository is not { } repository)
         {
             return false;
         }

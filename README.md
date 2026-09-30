@@ -4,7 +4,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
-![Tests](https://img.shields.io/badge/tests-118%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-119%20passing-2EA44F)
 ![Core coverage](https://img.shields.io/badge/core%20coverage-92.6%25%20lines-2EA44F)
 ![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -284,7 +284,7 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**118 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.6% line and 85.3% branch coverage.**
+**119 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.6% line and 85.3% branch coverage.**
 
 The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
@@ -388,7 +388,7 @@ Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the 
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test                                        # all 118 tests
+dotnet test                                        # all 119 tests
 dotnet test --project tests/GitHr.App.Tests        # one suite
 dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
 ```

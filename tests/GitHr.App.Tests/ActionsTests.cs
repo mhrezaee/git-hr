@@ -108,6 +108,25 @@ public sealed class ActionsTests : UiTestBase
     });
 
     [Fact]
+    public Task ConfirmedAction_StillRuns_WhenClosingTheDialogStartsARefresh() => RunUi(async () =>
+    {
+        var (window, vm) = await OpenWithTwoHunksAsync();
+        // Closing a real dialog re-activates the main window, which starts a refresh before the confirmed action runs.
+        vm.Confirm = (_, _, _, _) =>
+        {
+            _ = vm.RefreshIfIdleAsync();
+            return Task.FromResult(true);
+        };
+
+        Click(window, FindButton(window, "Discard hunk"));
+        await WaitUntilAsync(() => !vm.IsBusy && vm.DiffLines.Count(l => l.IsHunk) == 1, "hunk discarded");
+        Assert.DoesNotContain("line 2 changed", await File.ReadAllTextAsync(Path.Combine(Dir, "f.txt")));
+
+        Click(window, FindButton(window, "Discard all"));
+        await WaitUntilAsync(() => !vm.IsBusy && vm.UnstagedFiles.Count == 0, "all discarded");
+    });
+
+    [Fact]
     public Task DiscardFile_FromContextMenu() => RunUi(async () =>
     {
         var (window, vm) = await OpenWindowAsync();
