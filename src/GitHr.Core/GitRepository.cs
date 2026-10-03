@@ -1,4 +1,5 @@
 using GitHr.Core.Conflicts;
+using GitHr.Core.History;
 using GitHr.Core.Parsing;
 
 namespace GitHr.Core;
@@ -96,12 +97,17 @@ public sealed class GitRepository
         }
     }
 
-    public async Task<IReadOnlyList<Commit>> GetCommitsAsync(int maxCount = 2000, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Commit>> GetCommitsAsync(int maxCount = 2000, CancellationToken cancellationToken = default) =>
+        GetLogAsync([], maxCount, cancellationToken);
+
+    /// <summary><c>git log</c> over all branches, remote branches, tags and HEAD, newest first.</summary>
+    private async Task<IReadOnlyList<Commit>> GetLogAsync(IEnumerable<string> filters, int maxCount, CancellationToken cancellationToken)
     {
         List<string> args =
         [
             "log", "--date-order", "--decorate=full", $"--max-count={maxCount}",
             $"--format={GitOutputParser.LogFormat}",
+            .. filters,
             "--branches", "--remotes", "--tags",
         ];
         if (await HasHeadAsync(cancellationToken))
@@ -116,6 +122,70 @@ public sealed class GitRepository
 
         var result = await RunAsync(args, cancellationToken);
         return GitOutputParser.ParseLog(result.Output);
+    }
+
+    // ---------- History search, file history & blame ----------
+
+    /// <summary>Commits on any branch, remote branch or tag that match <paramref name="search"/>, newest first.</summary>
+    public async Task<IReadOnlyList<Commit>> SearchCommitsAsync(HistorySearch search, int maxCount = 2000, CancellationToken cancellationToken = default)
+    {
+        var text = search.Text.Trim();
+        if (text.Length == 0)
+        {
+            return [];
+        }
+
+        switch (search.Kind)
+        {
+            case HistorySearchKind.Sha:
+                // Any revision: a full or abbreviated SHA, a tag, HEAD~3, ...
+                var resolved = await _git.RunAsync(Root, ["rev-parse", "--verify", "--quiet", "--end-of-options", text + "^{commit}"],
+                    cancellationToken: cancellationToken);
+                if (!resolved.Success)
+                {
+                    return [];
+                }
+                var result = await RunAsync(["log", "--max-count=1", "--decorate=full", $"--format={GitOutputParser.LogFormat}",
+                    resolved.Output.Trim(), "--"], cancellationToken);
+                return GitOutputParser.ParseLog(result.Output);
+            case HistorySearchKind.Author:
+                return await GetLogAsync(["--regexp-ignore-case", "--fixed-strings", $"--author={text}"], maxCount, cancellationToken);
+            case HistorySearchKind.Code:
+                return await GetLogAsync([$"-S{text}"], maxCount, cancellationToken);
+            default:
+                return await GetLogAsync(["--regexp-ignore-case", "--fixed-strings", $"--grep={text}"], maxCount, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Commits of the current branch that changed <paramref name="path"/>, newest first, following renames;
+    /// each with the file's path in that commit.
+    /// </summary>
+    public async Task<IReadOnlyList<FileRevision>> GetFileHistoryAsync(string path, int maxCount = 2000, CancellationToken cancellationToken = default)
+    {
+        if (!await HasHeadAsync(cancellationToken))
+        {
+            return [];
+        }
+        var result = await RunAsync(["log", "--follow", "-M", "--name-status", "-z", "--decorate=full", $"--max-count={maxCount}",
+            $"--format={HistoryParser.FileLogFormat}", "HEAD", "--", path], cancellationToken);
+        return HistoryParser.ParseFileLog(result.Output, path);
+    }
+
+    /// <summary>
+    /// Who last changed each line of <paramref name="path"/>: in the working tree when <paramref name="revision"/>
+    /// is null (uncommitted lines included), otherwise in that commit.
+    /// </summary>
+    public async Task<Blame> GetBlameAsync(string path, string? revision = null, CancellationToken cancellationToken = default)
+    {
+        List<string> args = ["blame", "--porcelain"];
+        if (revision is not null)
+        {
+            args.Add(revision);
+        }
+        args.AddRange(["--", path]);
+        var result = await RunAsync(args, cancellationToken);
+        return HistoryParser.ParseBlame(result.Output, path, revision);
     }
 
     public async Task<string> GetCommitMessageAsync(string sha, CancellationToken cancellationToken = default)

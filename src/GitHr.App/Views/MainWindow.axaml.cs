@@ -48,6 +48,11 @@ public partial class MainWindow : Window
             vm.RequestClone = async input => await new CloneDialog { DataContext = input }.ShowDialog<bool?>(this) == true;
             vm.OpenConflictResolver = async resolver =>
                 await new ConflictResolverWindow { DataContext = resolver }.ShowDialog<bool?>(this) == true;
+            vm.OpenBlame = blame =>
+            {
+                new BlameWindow { DataContext = blame }.Show(this);
+                return System.Threading.Tasks.Task.CompletedTask;
+            };
         }
     }
 
@@ -80,6 +85,12 @@ public partial class MainWindow : Window
             e.Handled = true;
             ViewModel.OpenPalette();
             Dispatcher.UIThread.Post(() => PaletteBox.Focus(), DispatcherPriority.Input);
+        }
+        else if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control) && ViewModel.HasRepository)
+        {
+            e.Handled = true;
+            HistorySearchBox.Focus();
+            HistorySearchBox.SelectAll();
         }
         else if (e.Key == Key.Escape && ViewModel.Palette.IsOpen)
         {

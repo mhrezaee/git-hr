@@ -101,6 +101,32 @@ public sealed class SyntaxHighlighter
         return result;
     }
 
+    /// <summary>Colored ranges per line of a whole file (e.g. for blame), tokenized as one stream.</summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<SyntaxSpan>> Highlight(string path, IReadOnlyList<string> lines)
+    {
+        var result = new Dictionary<int, IReadOnlyList<SyntaxSpan>>();
+        if (lines.Count > MaxLines)
+        {
+            return result;
+        }
+
+        lock (_gate)
+        {
+            if (GetGrammar(path) is not { } grammar)
+            {
+                return result;
+            }
+
+            IStateStack? state = null;
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            for (var i = 0; i < lines.Count && elapsed.Elapsed < Budget; i++)
+            {
+                state = Tokenize(grammar, lines[i], state, i, result);
+            }
+        }
+        return result;
+    }
+
     private IStateStack? Tokenize(IGrammar grammar, string text, IStateStack? state, int index, Dictionary<int, IReadOnlyList<SyntaxSpan>> result)
     {
         if (text.Length > MaxLineLength)

@@ -297,8 +297,33 @@
                 <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
 
                 <!-- Center: graph + diff -->
-                <Grid Grid.Column="2" RowDefinitions="*,1,280">
-                    <ListBox Classes="commits" ItemsSource="{Binding Commits}" SelectedItem="{Binding SelectedCommit}">
+                <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*,1,280">
+                    <!-- History search: Enter searches, Esc (or ×) goes back to the full graph. Ctrl+F focuses it. -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,6,8,4">
+                        <ComboBox x:Name="SearchKindBox" ItemsSource="{x:Static vm:MainViewModel.SearchKinds}" SelectedItem="{Binding SearchKind}"
+                                  MinWidth="130" Margin="0,0,6,0" ToolTip.Tip="What to search">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={x:Static app:Converters.SearchKindLabel}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBox x:Name="HistorySearchBox" Grid.Column="1" Text="{Binding SearchText}"
+                                 PlaceholderText="Search history — message, author, code change or SHA (Ctrl+F, Enter)">
+                            <TextBox.KeyBindings>
+                                <KeyBinding Gesture="Enter" Command="{Binding SearchHistoryCommand}" />
+                                <KeyBinding Gesture="Escape" Command="{Binding ClearHistoryFilterCommand}" />
+                            </TextBox.KeyBindings>
+                        </TextBox>
+                        <Button Grid.Column="2" Classes="small" Content="Search" Margin="6,0,0,0" Command="{Binding SearchHistoryCommand}" />
+                    </Grid>
+                    <Border Grid.Row="1" Background="{StaticResource DiffHunkBackground}" Padding="12,4,8,4" IsVisible="{Binding IsHistoryFiltered}">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding HistoryFilterTitle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="12" />
+                            <Button Grid.Column="1" Classes="small" Content="Show all commits" Command="{Binding ClearHistoryFilterCommand}" />
+                        </Grid>
+                    </Border>
+                    <ListBox Grid.Row="2" Classes="commits" ItemsSource="{Binding Commits}" SelectedItem="{Binding SelectedCommit}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:CommitItemViewModel">
                                 <Grid ColumnDefinitions="Auto,*,140,120,70" Height="28" Background="Transparent">
@@ -362,9 +387,9 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <GridSplitter Grid.Row="1" ResizeDirection="Rows" />
+                    <GridSplitter Grid.Row="3" ResizeDirection="Rows" />
 
-                    <DockPanel Grid.Row="2" Background="{StaticResource PanelBackground}">
+                    <DockPanel Grid.Row="4" Background="{StaticResource PanelBackground}">
                         <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,8,0">
                             <TextBlock Classes="section" Margin="12,6" TextTrimming="CharacterEllipsis"
                                        Text="{Binding DiffTitle, TargetNullValue='Select a file to see its diff'}" />
@@ -479,6 +504,11 @@
                                                 <ContextMenu>
                                                     <MenuItem Header="Stage" Command="{Binding Owner.StageFileCommand}" CommandParameter="{Binding}" />
                                                     <MenuItem Header="Discard changes…" Command="{Binding Owner.DiscardFileCommand}" CommandParameter="{Binding}" />
+                                                    <Separator IsVisible="{Binding !IsUntracked}" />
+                                                    <MenuItem Header="File history" IsVisible="{Binding !IsUntracked}"
+                                                              Command="{Binding Owner.ShowFileHistoryCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Blame…" IsVisible="{Binding !IsUntracked}"
+                                                              Command="{Binding Owner.BlameFileCommand}" CommandParameter="{Binding}" />
                                                     <Separator IsVisible="{Binding IsConflicted}" />
                                                     <MenuItem Header="Resolve conflicts…" IsVisible="{Binding IsConflicted}"
                                                               Command="{Binding Owner.ResolveConflictCommand}" CommandParameter="{Binding}" />
@@ -519,6 +549,9 @@
                                             <Grid.ContextMenu>
                                                 <ContextMenu>
                                                     <MenuItem Header="Unstage" Command="{Binding Owner.UnstageFileCommand}" CommandParameter="{Binding}" />
+                                                    <Separator />
+                                                    <MenuItem Header="File history" Command="{Binding Owner.ShowFileHistoryCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Blame…" Command="{Binding Owner.BlameFileCommand}" CommandParameter="{Binding}" />
                                                 </ContextMenu>
                                             </Grid.ContextMenu>
                                         </Grid>
@@ -558,7 +591,13 @@
                                      SelectedItem="{Binding SelectedCommitFile}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate x:DataType="vm:FileChangeItemViewModel">
-                                        <Grid ColumnDefinitions="Auto,*" ToolTip.Tip="{Binding ToolTip}">
+                                        <Grid ColumnDefinitions="Auto,*" ToolTip.Tip="{Binding ToolTip}" Background="Transparent">
+                                            <Grid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="File history" Command="{Binding Owner.ShowFileHistoryCommand}" CommandParameter="{Binding}" />
+                                                    <MenuItem Header="Blame at this commit…" Command="{Binding Owner.BlameFileAtCommitCommand}" CommandParameter="{Binding}" />
+                                                </ContextMenu>
+                                            </Grid.ContextMenu>
                                             <Border Width="18" Height="18" CornerRadius="3" Margin="0,0,8,0"
                                                     Background="{Binding Kind, Converter={x:Static app:Converters.FileKindBrush}}">
                                                 <TextBlock Text="{Binding KindLetter}" FontSize="11" FontWeight="Bold" Foreground="White"

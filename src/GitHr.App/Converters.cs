@@ -21,6 +21,14 @@ public static class Converters
     public static readonly IValueConverter IsEditableDiff =
         new FuncValueConverter<GitHr.App.ViewModels.DiffMode, bool>(m => m != GitHr.App.ViewModels.DiffMode.ReadOnly);
 
+    public static readonly IValueConverter SearchKindLabel = new FuncValueConverter<GitHr.Core.History.HistorySearchKind, string>(kind => kind switch
+    {
+        GitHr.Core.History.HistorySearchKind.Author => "Author",
+        GitHr.Core.History.HistorySearchKind.Code => "Code change",
+        GitHr.Core.History.HistorySearchKind.Sha => "SHA / ref",
+        _ => "Message",
+    });
+
     public static readonly IValueConverter FileKindBrush = new FuncValueConverter<FileChangeKind, IBrush>(kind => kind switch
     {
         FileChangeKind.Added or FileChangeKind.Untracked => Green,

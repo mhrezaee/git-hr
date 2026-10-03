@@ -148,6 +148,7 @@ public partial class MainViewModel : ViewModelBase
             RepositoryName = repository.Name;
             RepositoryPath = repository.Root;
             SelectedCommit = null;
+            ResetHistoryFilter();
             IsAmend = false;
             CommitMessage = "";
             ClearDiff();
@@ -194,6 +195,7 @@ public partial class MainViewModel : ViewModelBase
         Tags.Clear();
         SelectedStashFiles.Clear();
         UpdateOperation(RepositoryOperation.None, null);
+        ResetHistoryFilter();
         ClearDiff();
     }
 
@@ -463,6 +465,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 SelectedCommitFiles.Add(new FileChangeItemViewModel(change, this));
             }
+            SelectFileOfFileHistory(item);
         }
         catch (OperationCanceledException)
         {
@@ -615,10 +618,11 @@ public partial class MainViewModel : ViewModelBase
         var hasCommitsTask = repository.HasCommitsAsync();
         var stashesTask = repository.GetStashesAsync();
         var tagsTask = repository.GetTagsAsync();
+        var filter = _historyFilter;
         var graphTask = Task.Run(async () =>
         {
-            var commits = await repository.GetCommitsAsync(CommitLimit);
-            return (commits, rows: CommitGraph.Layout(commits));
+            var (commits, revisions) = await LoadHistoryAsync(repository, filter);
+            return (commits, revisions, rows: CommitGraph.Layout(GraphCommits(commits, filter)));
         });
 
         var status = await statusTask;
@@ -628,7 +632,7 @@ public partial class MainViewModel : ViewModelBase
         var stashes = await stashesTask;
         var tags = await tagsTask;
         var mergeMessage = operation == RepositoryOperation.Merging ? await repository.GetMergeMessageAsync() : null;
-        var (commits, rows) = await graphTask;
+        var (commits, revisions, rows) = await graphTask;
 
         if (!ReferenceEquals(repository, _repository))
         {
@@ -671,9 +675,12 @@ public partial class MainViewModel : ViewModelBase
         var laneCount = Math.Min(rows.Count == 0 ? 1 : rows.Max(r => r.LaneCount), MaxGraphLanes);
         var graphWidth = laneCount * GraphLaneWidth + 8;
         var items = commits.Select((c, i) => new CommitItemViewModel(c, rows[i], graphWidth, this)).ToList();
-        // Only rebuild the graph when history or refs changed, so scroll position survives a refresh.
-        if (!SameHistory(commits, Commits.Select(c => c.Commit).ToList()))
+        _fileRevisions = revisions;
+        UpdateHistoryFilterTitle(filter, commits.Count);
+        // Only rebuild the graph when history, refs or the filter changed, so scroll position survives a refresh.
+        if (!Equals(filter, _shownHistoryFilter) || !SameHistory(commits, Commits.Select(c => c.Commit).ToList()))
         {
+            _shownHistoryFilter = filter;
             Replace(Commits, items);
             _restoringSelection = true;
             SelectedCommit = Commits.FirstOrDefault(c => c.Commit.Sha == selectedSha);

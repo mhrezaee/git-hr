@@ -1,0 +1,58 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GitHr.App.ViewModels"
+        xmlns:controls="using:GitHr.App.Controls"
+        x:Class="GitHr.App.Views.BlameWindow"
+        x:DataType="vm:BlameViewModel"
+        Title="{Binding Title}"
+        Width="1180" Height="820" MinWidth="700" MinHeight="400"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="ListBox.blame ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <!-- A thin rule above each commit's block of lines. -->
+        <Style Selector="Border.blameline.blockstart">
+            <Setter Property="BorderBrush" Value="{StaticResource SubtleBorder}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+        </Style>
+        <Style Selector="TextBlock.meta">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBackground}" Padding="12,8">
+            <StackPanel Spacing="2">
+                <TextBlock Text="{Binding Blame.Path}" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Summary}" Classes="muted" FontSize="12" />
+            </StackPanel>
+        </Border>
+
+        <ListBox x:Name="BlameList" Classes="blame" ItemsSource="{Binding Lines}" Background="{StaticResource AppBackground}"
+                 DoubleTapped="BlameList_DoubleTapped">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:BlameLineViewModel">
+                    <Border Classes="blameline" Classes.blockstart="{Binding IsBlockStart}" Background="Transparent"
+                            ToolTip.Tip="{Binding ToolTip}">
+                        <Grid ColumnDefinitions="4,80,140,84,260,48,*">
+                            <Border Background="{StaticResource Accent}" Opacity="{Binding AgeOpacity}" Margin="0,0,0,0" />
+                            <TextBlock Grid.Column="1" Classes="meta" Text="{Binding ShortSha}" Foreground="{StaticResource Accent}"
+                                       FontFamily="{StaticResource MonoFont}" Margin="8,0" />
+                            <TextBlock Grid.Column="2" Classes="meta" Text="{Binding Author}" />
+                            <TextBlock Grid.Column="3" Classes="meta muted" Text="{Binding Date}" />
+                            <TextBlock Grid.Column="4" Classes="meta muted" Text="{Binding CommitSummary}" />
+                            <TextBlock Grid.Column="5" Classes="lineno" Text="{Binding Number}" />
+                            <controls:DiffText Grid.Column="6" Classes="code" Styled="{Binding Styled}" Margin="8,0,0,0" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>
