@@ -13,8 +13,8 @@ GitHr only needs **git** to be installed (2.30 or newer); .NET is included. `SHA
 
 ## First start
 
-The builds are not code-signed yet, so your system asks once:
+The builds are not code-signed yet ([code signing policy](https://github.com/mhrezaee/git-hr#code-signing-policy)), so your system asks once:
 
-- **Windows**: SmartScreen may say "Windows protected your PC" → *More info* → *Run anyway*. The installer needs no administrator rights.
+- **Windows**: SmartScreen may say "Windows protected your PC" → click *More info*, then *Run anyway*. You never need to run GitHr or its installer as administrator. On managed company PCs the administrator may have disabled *Run anyway*.
 - **macOS**: open the `.dmg`, drag GitHr to *Applications*, then right-click GitHr → *Open* → *Open* (only the first time). Or run `xattr -dr com.apple.quarantine /Applications/GitHr.app`.
 - **Linux**: `chmod +x GitHr-{{VERSION}}-linux-x64.AppImage`, then run it. From the tarball, run `./GitHr`; `githr.desktop` and `githr.png` are included for a menu entry.

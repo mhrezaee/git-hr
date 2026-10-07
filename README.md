@@ -24,6 +24,7 @@ Windows first; macOS and Linux run from the same code. No accounts, no paywall, 
 - [Continuous integration](#continuous-integration)
 - [Releases](#releases)
 - [Security and privacy](#security-and-privacy)
+- [Code signing policy](#code-signing-policy)
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
 - [Roadmap](#roadmap)
@@ -41,7 +42,18 @@ Get the latest version from **[Releases](https://github.com/mhrezaee/git-hr/rele
 | Linux (x64) | `.AppImage` (runs on most distributions) or `.tar.gz` |
 | Linux (ARM64) | `.tar.gz` |
 
-The builds are not code-signed yet: on first start, Windows SmartScreen asks once (*More info → Run anyway*), and on macOS right-click GitHr → *Open*. Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
+The builds are not code-signed yet (see the [code signing policy](#code-signing-policy)): on first start, Windows SmartScreen asks once (*More info → Run anyway*; on managed company PCs your administrator may have disabled that), and on macOS right-click GitHr → *Open*. Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
+
+### Uninstall
+
+| Installed with | Remove it |
+|---|---|
+| Windows installer | *Settings → Apps → Installed apps → GitHr → Uninstall* (or *Control Panel → Programs*) |
+| Windows zip, Linux tarball | Delete the folder |
+| macOS `.dmg` | Drag *GitHr* from *Applications* to the Trash |
+| Linux AppImage | Delete the `.AppImage` file |
+
+GitHr keeps one small settings file (recent repositories, clone folder, diff layout): `%APPDATA%\GitHr\settings.json` on Windows, `~/.config/GitHr/settings.json` on macOS and Linux. Delete it to remove every trace; your repositories and git configuration are never touched.
 
 ---
 
@@ -514,6 +526,27 @@ flowchart LR
 - **Credentials never pass through GitHr.** HTTPS sign-in is handled by Git Credential Manager (credentials in the OS credential store); SSH uses your keys and agent.
 - **Arguments are passed as an argument list**, never through a shell, so branch names or paths cannot inject commands.
 - **Destructive operations ask first** (discard, reset hard, force delete, force push, abort), and Enter never confirms them.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+> **Status:** GitHr has applied for SignPath Foundation's free code signing for open-source projects. Until the application is approved, releases (up to and including 0.1.0) are **not signed**; this policy describes how signed releases will be made.
+
+**What is signed.** Only release builds of GitHr itself: `GitHr.exe` and the Windows installer `GitHr-<version>-<arch>-setup.exe`. They are built from the tagged source in this repository by the [release workflow](.github/workflows/release.yml) on GitHub-hosted runners — never on a developer machine — and every release first passes the full test suite on Windows, Linux and macOS. Each signed file carries the product name *GitHr* and the release version in its file properties. Third-party components are not signed separately; GitHr ships no proprietary code.
+
+**Team roles**
+
+| Role | Members | Responsibility |
+|---|---|---|
+| Committers and reviewers | [Hadi Rezaee](https://github.com/mhrezaee) | May change the source directly; review every contribution from people outside the team before it is merged |
+| Approvers | [Hadi Rezaee](https://github.com/mhrezaee) | Approve each signing request, after checking that it comes from a tagged release built by the release workflow |
+
+Everyone with one of these roles uses multi-factor authentication for GitHub and for SignPath.
+
+**Privacy policy.** This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. GitHr has no telemetry, no accounts and no servers of its own; it only runs the `git` installed on your computer, which connects to the remotes you configure. Sign-in to those remotes is handled by git's credential helpers (for example Git Credential Manager) and your SSH setup, under their own privacy policies — GitHr does not see or store your credentials.
+
+**System changes.** The Windows installer installs for the current user by default (no administrator rights), adds a Start menu entry and, only if you tick it, a desktop shortcut, and registers an uninstaller ([how to uninstall](#uninstall)). GitHr changes nothing else on your system.
 
 ---
 
