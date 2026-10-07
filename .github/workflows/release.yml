@@ -1,0 +1,127 @@
+# Publishes a GitHub Release with downloadable packages for Windows, macOS and Linux.
+#
+#   git tag v1.2.0 && git push origin v1.2.0      -> tests, packages, release "GitHr 1.2.0"
+#   git tag v1.3.0-beta.1 && git push ...         -> the same, marked as pre-release
+#   Actions tab -> Release -> Run workflow        -> dry run: packages as run artifacts, no release
+#
+# Every package is a self-contained single executable (no .NET needed), built by build/package.sh.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for the dry-run packages (nothing is released)
+        required: true
+        default: 0.0.0-dev
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="$INPUT_VERSION"; fi
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$v' is not a version like 1.2.3 or 1.2.3-beta.1"
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Building GitHr $v" >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Test
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: [version, test]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows x64, os: windows-latest, rid: win-x64 }
+          - { name: Windows ARM64, os: windows-latest, rid: win-arm64 }
+          - { name: macOS Apple Silicon, os: macos-latest, rid: osx-arm64 }
+          - { name: macOS Intel, os: macos-latest, rid: osx-x64 }
+          - { name: Linux x64, os: ubuntu-latest, rid: linux-x64 }
+          - { name: Linux ARM64, os: ubuntu-latest, rid: linux-arm64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: |
+          if [ ! -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            choco install innosetup --no-progress -y
+          fi
+
+      - name: Build packages
+        run: bash build/package.sh ${{ matrix.rid }} ${{ needs.version.outputs.version }} dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.rid }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Release notes
+        run: sed "s/{{VERSION}}/$VERSION/g" build/release-notes.md > "$RUNNER_TEMP/release-notes.md"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: GitHr ${{ needs.version.outputs.version }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          generate_release_notes: true # appends the merged changes since the previous release
+          prerelease: ${{ contains(needs.version.outputs.version, '-') }}
+          files: dist/*
+          fail_on_unmatched_files: true

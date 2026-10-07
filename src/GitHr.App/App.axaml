@@ -32,6 +32,7 @@
 
         <Style Selector="Window">
             <Setter Property="Background" Value="{StaticResource AppBackground}" />
+            <Setter Property="Icon" Value="/Assets/githr.ico" />
         </Style>
 
         <!-- Section headers like "LOCAL", "STAGED" -->

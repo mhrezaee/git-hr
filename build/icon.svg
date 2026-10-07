@@ -1,0 +1,19 @@
+<!-- Source of the GitHr icon (Assets/githr.ico and .png, build/macos/githr.icns are rendered from the same shapes). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="40" y1="40" x2="984" y2="984" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22BDF2" />
+      <stop offset="1" stop-color="#0A5C93" />
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="210" fill="url(#bg)" />
+  <g stroke="#FFFFFF" stroke-width="72" stroke-linecap="round" fill="none">
+    <line x1="400" y1="290" x2="400" y2="734" />
+    <path d="M660 400 C660 600 400 560 400 734" />
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="400" cy="290" r="96" />
+    <circle cx="660" cy="400" r="96" />
+    <circle cx="400" cy="734" r="96" />
+  </g>
+</svg>

@@ -1,4 +1,4 @@
-# Builds GitHr and runs every test suite on Windows, Linux and macOS.
+# Builds GitHr and runs every test suite on Windows, Linux and macOS (also called by release.yml before packaging).
 # Test reports, UI screenshots and (on Linux) code coverage are uploaded as artifacts
 # and summarized on the run's summary page.
 name: CI
@@ -9,6 +9,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call: # the release workflow runs the full test matrix first
 
 permissions:
   contents: read

@@ -9,7 +9,6 @@
         mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="850"
         x:Class="GitHr.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
         Width="1400" Height="850" MinWidth="900" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         Title="{Binding RepositoryName, StringFormat='{}{0} — GitHr', FallbackValue='GitHr', TargetNullValue='GitHr'}">
@@ -128,8 +127,11 @@
             <!-- ================= Welcome screen ================= -->
             <Grid IsVisible="{Binding !HasRepository}" RowDefinitions="Auto,Auto,*" Width="560" Margin="0,80,0,40">
                 <StackPanel Spacing="6">
+                    <Image Source="/Assets/githr.png" Width="72" Height="72" HorizontalAlignment="Center" />
                     <TextBlock Text="GitHr" FontSize="40" FontWeight="Bold" HorizontalAlignment="Center" />
                     <TextBlock Text="A fast, free Git client for public and private repositories." Classes="muted" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="VersionText" Text="{x:Static app:AppInfo.DisplayVersion}" Classes="muted" FontSize="11"
+                               HorizontalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,20,0,0">
                         <Button Classes="accent" Content="Open repository…" Click="OpenRepository_Click" Padding="24,8" />
                         <Button Content="Clone repository…" Command="{Binding CloneCommand}" Padding="24,8" />

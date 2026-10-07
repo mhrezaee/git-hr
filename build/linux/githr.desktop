@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GitHr
+GenericName=Git client
+Comment=A fast, free Git GUI
+Exec=GitHr %f
+Icon=githr
+Terminal=false
+Categories=Development;RevisionControl;
+Keywords=git;version control;commit;branch;merge;
+StartupWMClass=GitHr

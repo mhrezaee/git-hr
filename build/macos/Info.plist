@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- App bundle metadata; build/package.sh replaces {{VERSION}}. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>GitHr</string>
+    <key>CFBundleDisplayName</key>
+    <string>GitHr</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.mhrezaee.githr</string>
+    <key>CFBundleExecutable</key>
+    <string>GitHr</string>
+    <key>CFBundleIconFile</key>
+    <string>githr</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{VERSION}}</string>
+    <key>CFBundleVersion</key>
+    <string>{{VERSION}}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright (c) 2026 Hadi Rezaee. MIT License.</string>
+</dict>
+</plist>

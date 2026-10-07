@@ -1,10 +1,13 @@
+<p align="center"><img src="src/GitHr.App/Assets/githr.png" width="96" height="96" alt="GitHr icon" /></p>
+
 # GitHr
 
+[![Latest release](https://img.shields.io/github/v/release/mhrezaee/git-hr?include_prereleases&label=download)](https://github.com/mhrezaee/git-hr/releases)
 [![CI](https://github.com/mhrezaee/git-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/mhrezaee/git-hr/actions/workflows/ci.yml)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Avalonia 12](https://img.shields.io/badge/UI-Avalonia%2012-8B44AC)](https://avaloniaui.net/)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2EA44F)
-![Tests](https://img.shields.io/badge/tests-165%20passing-2EA44F)
+![Tests](https://img.shields.io/badge/tests-167%20passing-2EA44F)
 ![Core coverage](https://img.shields.io/badge/core%20coverage-92.4%25%20lines-2EA44F)
 ![xUnit v4](https://img.shields.io/badge/xUnit-v4%20%C2%B7%20Microsoft.Testing.Platform-5C2D91)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -12,16 +15,33 @@
 A fast, free, cross-platform Git GUI built with C#, .NET 10 and Avalonia UI.
 Windows first; macOS and Linux run from the same code. No accounts, no paywall, no repository limits — public and private repositories alike.
 
+- [Download](#download)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Design decisions](#design-decisions)
 - [Key flows](#key-flows)
 - [Testing strategy](#testing-strategy)
 - [Continuous integration](#continuous-integration)
+- [Releases](#releases)
 - [Security and privacy](#security-and-privacy)
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
 - [Roadmap](#roadmap)
+
+---
+
+## Download
+
+Get the latest version from **[Releases](https://github.com/mhrezaee/git-hr/releases)**. Every package is one self-contained executable — .NET is included; only **git** (2.30 or newer) must be installed.
+
+| System | Package |
+|---|---|
+| Windows (x64, ARM64) | `…-win-x64-setup.exe` installer (per user, no administrator rights) or portable `.zip` |
+| macOS (Apple Silicon, Intel) | `.dmg` — drag GitHr to *Applications* |
+| Linux (x64) | `.AppImage` (runs on most distributions) or `.tar.gz` |
+| Linux (ARM64) | `.tar.gz` |
+
+The builds are not code-signed yet: on first start, Windows SmartScreen asks once (*More info → Run anyway*), and on macOS right-click GitHr → *Open*. Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
 
 ---
 
@@ -366,13 +386,13 @@ stateDiagram-v2
 
 ## Testing strategy
 
-**165 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.4% line and 84.5% branch coverage.**
+**167 automated tests**, run with `dotnet test`. Every test uses real git against throwaway repositories — nothing is mocked at the Git boundary. **GitHr.Core has 92.4% line and 84.5% branch coverage.**
 
 The suites use **xUnit v4** on **Microsoft.Testing.Platform** (the .NET 10 test runner, enabled for the repo in `global.json`). Test projects are self-hosting executables, so they also run directly (`tests/GitHr.Core.Tests/bin/Debug/net10.0/GitHr.Core.Tests.exe`).
 
 ```mermaid
 flowchart TB
-    UI["UI tests · 42<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs, conflict resolver, diff viewer, history search, blame"]
+    UI["UI tests · 44<br/>real MainWindow, headless (Avalonia.Headless + Skia)<br/>keyboard & mouse input, context menus, dialogs, conflict resolver, diff viewer, history search, blame"]
     INT["Integration tests · 53<br/>GitRepository against real temporary repositories<br/>(clone, push/pull to local bare remotes, conflicts, partial staging, stashes, tags, conflict resolution, search, file history, blame)"]
     UNIT["Unit tests · 70<br/>parsers (incl. stash list, tags, conflict markers, file log, blame) · commit graph · patch builder · URL parsing<br/>side-by-side rows · changed words · syntax highlighting<br/>palette scoring · progress parsing · clone dialog rules"]
     UI --- INT --- UNIT
@@ -455,6 +475,39 @@ flowchart LR
 - **Run summary**: each job appends its test counts (and Linux its coverage) to the run's summary page via `.github/scripts/test-summary.sh`, written in plain POSIX shell so it runs on every runner.
 - Superseded runs on the same branch are cancelled (`concurrency`), and the workflow only has read access to the repository.
 
+## Releases
+
+Pushing a version tag publishes a GitHub Release ([`.github/workflows/release.yml`](.github/workflows/release.yml)); the packages are built by one script, [`build/package.sh`](build/package.sh), that also runs locally.
+
+```sh
+git tag v1.2.0 && git push origin v1.2.0      # release "GitHr 1.2.0"
+git tag v1.3.0-beta.1 && git push origin v1.3.0-beta.1   # marked as pre-release
+bash build/package.sh win-x64 1.2.0           # the same packages locally, into dist/
+```
+
+```mermaid
+flowchart LR
+    Tag["tag v1.2.0"] --> Version["version<br/>from the tag, validated"]
+    Tag --> Test["all tests<br/>Windows · Linux · macOS<br/>(ci.yml, reused)"]
+    Version --> Package
+    Test --> Package
+    subgraph Package["package · 6 runtimes in parallel"]
+        direction TB
+        P1["dotnet publish<br/>self-contained · single file · compressed<br/>-p:Version=1.2.0"]
+        P1 --> W["win-x64 · win-arm64<br/>Inno Setup installer + zip"]
+        P1 --> M["osx-arm64 · osx-x64<br/>.app bundle, ad-hoc signed → .dmg"]
+        P1 --> L["linux-x64 · linux-arm64<br/>AppImage (x64) + tar.gz"]
+    end
+    Package --> Release["GitHub Release<br/>packages · SHA256SUMS.txt<br/>notes + generated changelog"]
+```
+
+- **One version source.** `Directory.Build.props` holds the development version; a release overrides it from the tag (`-p:Version`). The exe's file properties, the macOS bundle, the installer and the start screen ("GitHr 1.2.0 (a1b2c3d)", with the commit it was built from) all show the same number.
+- **Nothing ships untested**: the release reuses the CI workflow (`workflow_call`) on all three systems before any package is built.
+- **Dry run**: *Actions → Release → Run workflow* builds every package as a downloadable artifact without publishing anything.
+- **Pre-releases**: a version with a suffix (`1.3.0-beta.1`) is published as a pre-release automatically.
+- **Upgrades on Windows**: the installer has a fixed `AppId`, so a new version replaces the old one in place and keeps a single entry in *Apps & features*.
+- Only the release job may write to the repository (`contents: write`); everything else runs read-only.
+
 ## Security and privacy
 
 - **No telemetry, no accounts, no network calls of its own.** GitHr only talks to the remotes you configure, through git.
@@ -466,15 +519,16 @@ flowchart LR
 
 ## Getting started
 
-Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the `PATH`.
+To use GitHr, [download a release](#download). To build it yourself you need the [.NET 10 SDK](https://dotnet.microsoft.com/) and Git 2.30+ on the `PATH`.
 
 ```sh
 dotnet build
 dotnet run --project src/GitHr.App                 # start screen
 dotnet run --project src/GitHr.App -- C:\path\repo # open a repository directly
-dotnet test                                        # all 165 tests
+dotnet test                                        # all 167 tests
 dotnet test --project tests/GitHr.App.Tests        # one suite
 dotnet test --project tests/GitHr.Core.Tests --coverlet --coverlet-output-format cobertura   # coverage report in TestResults/
+bash build/package.sh win-x64 0.1.0                # release packages into dist/ (osx-*, linux-* on those systems)
 ```
 
 ### Keyboard shortcuts
@@ -512,13 +566,24 @@ GitHr/
 │       ├── ViewModels/             # MainViewModel (+ Actions, Remote, StashesAndTags, Conflicts, History partials), palette, clone dialog, conflict resolver, blame, diff lines/rows, items
 │       ├── Controls/               # CommitGraphCell (graph lanes), DiffText (colored diff lines)
 │       ├── AppSettings.cs          # recent repositories, clone folder, diff layout (per-user app data)
+│       ├── AppInfo.cs              # version and commit of the running build
+│       ├── Assets/                 # app icon (githr.ico, githr.png)
 │       └── Converters.cs
 ├── tests/
 │   ├── GitHr.Core.Tests/           # unit + integration tests against real repositories (xUnit v4)
 │   └── GitHr.App.Tests/            # headless UI tests (xUnit v4 + HeadlessUnitTestSession)
+├── build/
+│   ├── package.sh                  # publish + package one runtime: zip/installer, dmg, AppImage/tar.gz
+│   ├── windows/GitHr.iss           # Inno Setup installer
+│   ├── macos/                      # Info.plist, githr.icns
+│   ├── linux/githr.desktop         # menu entry for the AppImage / tarball
+│   ├── release-notes.md            # download table + first-start notes for each release
+│   └── icon.svg                    # source of the app icon
 ├── .github/
 │   ├── workflows/ci.yml            # build + all tests on Windows, Linux, macOS
+│   ├── workflows/release.yml       # tag → tests → packages for 6 runtimes → GitHub Release
 │   └── scripts/test-summary.sh     # run summary: test reports + coverage
+├── Directory.Build.props           # version, product and copyright for every project
 ├── .gitattributes                  # line endings: LF in the repo, native on checkout, always LF for scripts
 └── global.json                     # opts `dotnet test` into Microsoft.Testing.Platform
 ```
@@ -531,7 +596,8 @@ GitHr/
 - Word-level diff for lines with several separate edits; ignore-whitespace option
 - GitHub / Azure DevOps pull requests
 - Multiple repository tabs, settings, light theme
-- Packaging and releases from CI: installer (Windows), .dmg (macOS), AppImage/Flatpak (Linux)
+- Code signing (Windows Authenticode, Apple notarization), so first start needs no confirmation
+- Update check, and packages for winget, Homebrew and Flatpak
 
 ## License
 

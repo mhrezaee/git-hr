@@ -4,6 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The executable is GitHr(.exe); namespaces stay GitHr.App. -->
+    <AssemblyName>GitHr</AssemblyName>
+    <RootNamespace>GitHr.App</RootNamespace>
+    <ApplicationIcon>Assets\githr.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
