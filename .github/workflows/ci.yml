@@ -14,8 +14,10 @@ on:
 permissions:
   contents: read
 
+# A newer run on the same branch cancels the older one. The workflow name keeps CI and the Release
+# workflow (which calls this file, so github.workflow is "Release" there) from cancelling each other.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
