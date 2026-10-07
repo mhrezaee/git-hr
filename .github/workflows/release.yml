@@ -76,7 +76,7 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: |
-          if [ ! -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+          if ! command -v iscc >/dev/null; then
             choco install innosetup --no-progress -y
           fi
 

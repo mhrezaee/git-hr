@@ -42,9 +42,11 @@ package_windows() {
 
   local iscc
   iscc=$(command -v iscc || command -v ISCC || true)
-  if [ -z "$iscc" ] && [ -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
-    iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-  fi
+  for candidate in "/c/Program Files/Inno Setup 7" "/c/Program Files (x86)/Inno Setup 7" "/c/Program Files (x86)/Inno Setup 6"; do
+    if [ -z "$iscc" ] && [ -x "$candidate/ISCC.exe" ]; then
+      iscc="$candidate/ISCC.exe"
+    fi
+  done
   if [ -z "$iscc" ]; then
     if [ "${CI:-}" = "true" ]; then
       echo "Inno Setup (ISCC.exe) not found" >&2
@@ -54,7 +56,7 @@ package_windows() {
     return
   fi
   echo "==> $name-setup.exe"
-  "$iscc" -Q "-DVersion=$version" "-DArch=$arch" "-DPublishDir=$(cygpath -w "$publish")" \
+  "$iscc" -Q "-DVersion=$version" "-DFileVersion=${version%%-*}" "-DArch=$arch" "-DPublishDir=$(cygpath -w "$publish")" \
     "-O$(cygpath -w "$dist")" "-F$name-setup" "$(cygpath -w "$root/build/windows/GitHr.iss")"
 }
 

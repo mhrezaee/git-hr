@@ -1,9 +1,13 @@
 ; Windows installer for GitHr (Inno Setup 6). Built by build/package.sh:
-;   ISCC /DVersion=1.2.0 /DArch=x64 /DPublishDir=<folder with GitHr.exe> /O<output> /F<name> GitHr.iss
+;   ISCC /DVersion=1.2.0-beta.1 /DFileVersion=1.2.0 /DArch=x64 /DPublishDir=<folder with GitHr.exe> /O<output> /F<name> GitHr.iss
 ; Installs per user by default (no administrator rights needed); the user can choose all users instead.
 
 #ifndef Version
   #define Version "0.0.0"
+#endif
+; Windows file versions are numeric only: 1.2.0 for "1.2.0-beta.1".
+#ifndef FileVersion
+  #define FileVersion "0.0.0"
 #endif
 #ifndef Arch
   #define Arch "x64"
@@ -27,7 +31,7 @@ AppPublisher=Hadi Rezaee
 AppPublisherURL=https://github.com/mhrezaee/git-hr
 AppSupportURL=https://github.com/mhrezaee/git-hr/issues
 AppUpdatesURL=https://github.com/mhrezaee/git-hr/releases
-VersionInfoVersion={#Version}
+VersionInfoVersion={#FileVersion}
 DefaultDirName={autopf}\GitHr
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
